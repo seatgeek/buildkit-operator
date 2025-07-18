@@ -15,11 +15,15 @@ import (
 	"github.com/reddit/achilles-sdk/pkg/io"
 	"github.com/reddit/achilles-sdk/pkg/logging"
 	"github.com/reddit/achilles-sdk/pkg/meta"
+	"github.com/reddit/achilles-sdk/pkg/ratelimiter"
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
+	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit"
+	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit_template"
 	"github.com/seatgeek/buildkit-operator/internal/controlplane"
 	intscheme "github.com/seatgeek/buildkit-operator/internal/scheme"
+	"github.com/seatgeek/buildkit-operator/internal/webhooks"
 )
 
 // opts store any optional settings that instruct how the manager and
@@ -90,6 +94,18 @@ func initStartFunc(o *opts) bootstrap.StartFunc {
 		}
 
 		log.Info("starting controllers...")
+
+		rl := ratelimiter.NewDefaultProviderRateLimiter(5)
+		if err := buildkit.SetupController(ctx, cpCtx, mgr, rl, client); err != nil {
+			return fmt.Errorf("failed to setup Buildkit controller: %w", err)
+		}
+		if err := buildkit_template.SetupController(ctx, cpCtx, mgr, rl, client); err != nil {
+			return fmt.Errorf("failed to setup BuildkitTemplate controller: %w", err)
+		}
+
+		if err := webhooks.SetupWebhooks(mgr); err != nil {
+			return fmt.Errorf("failed to setup webhooks: %w", err)
+		}
 
 		return nil
 	}

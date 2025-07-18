@@ -5,9 +5,21 @@
 package webhooks
 
 import (
+	"errors"
+
 	ctrl "sigs.k8s.io/controller-runtime"
+
+	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
 )
 
-func SetupWebhooks(_ ctrl.Manager) error {
-	return nil
+func SetupWebhooks(mgr ctrl.Manager) error {
+	return errors.Join(
+		ctrl.NewWebhookManagedBy(mgr).For(&v1alpha1.Buildkit{}).
+			WithValidator(NewBuildkitValidator(mgr.GetClient())).
+			Complete(),
+		ctrl.NewWebhookManagedBy(mgr).For(&v1alpha1.BuildkitTemplate{}).
+			WithDefaulter(&BuildkitTemplateDefaulter{}).
+			WithValidator(&BuildkitTemplateValidator{}).
+			Complete(),
+	)
 }

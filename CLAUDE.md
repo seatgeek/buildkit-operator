@@ -4,7 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Kubernetes operator that manages BuildKit instances on Kubernetes.
+This is a Kubernetes operator that manages BuildKit instances on Kubernetes. The operator uses the Kubebuilder framework and implements two main CRDs:
+
+- **Buildkit**: Represents a BuildKit instance that references a BuildkitTemplate
+- **BuildkitTemplate**: Defines the pod template and configuration for BuildKit instances
 
 The operator uses the Achilles SDK for finite state machine-based reconciliation and includes webhook validation/defaulting for both resources.
 
@@ -49,12 +52,32 @@ kubectl --kubeconfig ./kind/kubeconfig [command]
 ### Core Components
 
 - **api/v1alpha1/**: Contains the v1alpha1 CRD definitions
+  - `buildkit_types.go`: Buildkit resource spec and status
+  - `buildkit_template_types.go`: BuildkitTemplate resource spec
+
+- **internal/controllers/buildkit/**: Buildkit controller logic
+  - `reconciler.go`: FSM-based reconciler that manages BuildKit pods
+  - `builder.go`: Pod construction logic
+  - `conditions.go`: Status condition constants
+  - `resources/`: Resource manipulation utilities
+
+- **internal/controllers/buildkit_template/**: BuildkitTemplate controller logic
+  - `reconciler.go`: FSM-based reconciler for BuildkitTemplate resources
+  - `builder.go`: Template construction logic
+  - `conditions.go`: Status condition constants
+
+- **internal/webhooks/**: Admission webhook handlers
+  - `buildkit.go`: Validation webhook for Buildkit resources
+  - `buildkit_template.go`: Validation and defaulting webhook for BuildkitTemplate resources
 
 (Make sure to update the list above as core components are added, modified, or removed!)
 
 ### Key Patterns
 
 - Uses Achilles SDK for finite state machine reconciliation
+- Controller manages Pod lifecycle based on BuildkitTemplate configuration
+- Webhook validation ensures proper resource configuration
+- Status tracking includes endpoint information and managed resource references
 
 #### Achilles SDK FSM Framework
 

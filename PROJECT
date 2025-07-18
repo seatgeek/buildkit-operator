@@ -7,5 +7,28 @@ layout:
 - go.kubebuilder.io/v4
 projectName: buildkit-operator
 repo: github.com/seatgeek/buildkit-operator
-resources: []
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: seatgeek.io
+  group: buildkit.seatgeek.io
+  kind: Buildkit
+  path: github.com/seatgeek/buildkit-operator/api/v1alpha1
+  version: v1alpha1
+  webhooks:
+    validation: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: seatgeek.io
+  group: buildkit.seatgeek.io
+  kind: BuildkitTemplate
+  path: github.com/seatgeek/buildkit-operator/api/v1alpha1
+  version: v1alpha1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
 version: "3"

@@ -1,0 +1,72 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-buildkit-seatgeek-io-v1alpha1-buildkittemplate
+  failurePolicy: Fail
+  name: mbuildkittemplate.kb.io
+  rules:
+  - apiGroups:
+    - buildkit.seatgeek.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - buildkittemplates
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-buildkit-seatgeek-io-v1alpha1-buildkit
+  failurePolicy: Fail
+  name: mbuildkit.kb.io
+  rules:
+  - apiGroups:
+    - buildkit.seatgeek.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - buildkits
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-buildkit-seatgeek-io-v1alpha1-buildkittemplate
+  failurePolicy: Fail
+  name: mbuildkittemplate.kb.io
+  rules:
+  - apiGroups:
+    - buildkit.seatgeek.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - buildkittemplates
+  sideEffects: None
