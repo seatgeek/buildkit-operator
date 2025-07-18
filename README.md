@@ -1,5 +1,11 @@
 # buidkit-operator
 
+[![go.mod](https://img.shields.io/github/go-mod/go-version/seatgeek/buildkit-operator?style=flat-square)](go.mod)
+[![LICENSE](https://img.shields.io/github/license/seatgeek/buildkit-operator?style=flat-square)](LICENSE)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/seatgeek/buildkit-operator/ci.yml?branch=main&style=flat-square)](https://github.com/seatgeek/buildkit-operator/actions?query=workflow%3Aci+branch%3Amain)
+[![Go Report Card](https://goreportcard.com/badge/github.com/seatgeek/buildkit-operator?style=flat-square)](https://goreportcard.com/report/github.com/seatgeek/buildkit-operator)
+[![Codecov](https://img.shields.io/codecov/c/github/seatgeek/buildkit-operator?style=flat-square)](https://codecov.io/gh/seatgeek/buildkit-operator)
+
 An operator for managing BuildKit instances on Kubernetes.
 
 ## Local Development
