@@ -1,0 +1,46 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- resources:
+  - configmaps
+  - pods
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - buildkit.seatgeek.io
+  resources:
+  - buildkits
+  - buildkittemplates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - buildkit.seatgeek.io
+  resources:
+  - buildkits/finalizers
+  - buildkittemplates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - buildkit.seatgeek.io
+  resources:
+  - buildkits/status
+  - buildkittemplates/status
+  verbs:
+  - get
+  - patch
+  - update

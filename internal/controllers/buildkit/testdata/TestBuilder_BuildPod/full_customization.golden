@@ -1,0 +1,66 @@
+metadata:
+  annotations:
+    example.com/custom: value
+    template.example.com/config: enabled
+  creationTimestamp: null
+  generateName: test-buildkit-
+  labels:
+    app.kubernetes.io/component: builder
+    app.kubernetes.io/name: template-buildkit
+    app.kubernetes.io/version: v1.0.0
+  namespace: test-ns
+spec:
+  containers:
+  - args:
+    - --addr
+    - tcp://0.0.0.0:8080
+    image: custom/buildkit:v1.2.3
+    livenessProbe:
+      failureThreshold: 6
+      grpc:
+        port: 8080
+        service: null
+      initialDelaySeconds: 5
+      periodSeconds: 30
+    name: buildkit
+    ports:
+    - containerPort: 8080
+      name: tcp
+      protocol: TCP
+    readinessProbe:
+      failureThreshold: 2
+      grpc:
+        port: 8080
+        service: null
+      initialDelaySeconds: 5
+      periodSeconds: 15
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 200m
+        memory: 256Mi
+    volumeMounts:
+    - mountPath: /home/user/.local/share/buildkit
+      name: buildkitd
+    - mountPath: /home/user/.config/buildkit
+      name: config
+  nodeSelector:
+    kubernetes.io/arch: amd64
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  terminationGracePeriodSeconds: 900
+  tolerations:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/master
+    operator: Exists
+  volumes:
+  - emptyDir: {}
+    name: buildkitd
+  - configMap:
+      name: buildkit-test-template-toml
+    name: config
+status: {}
