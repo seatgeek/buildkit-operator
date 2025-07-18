@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frps-deployment
+  labels:
+    app: frps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frps
+  template:
+    metadata:
+      labels:
+        app: frps
+    spec:
+      containers:
+      - name: frps
+        image: snowdreamtech/frps
+        ports:
+        - containerPort: 7000
+        - containerPort: 443
+        volumeMounts:
+        - name: frps-config
+          mountPath: /etc/frp
+      volumes:
+      - name: frps-config
+        configMap:
+          name: frps-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook-service
+spec:
+  selector:
+    app: frps
+  ports:
+    - protocol: TCP
+      port: 443
+      targetPort: 443
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frps-service
+spec:
+  selector:
+    app: frps
+  ports:
+    - protocol: TCP
+      port: 7000
+      targetPort: 7000
+      nodePort: 30000
+  type: NodePort
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frps-config
+data:
+  frps.toml: |
+    bindPort = 7000

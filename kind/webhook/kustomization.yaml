@@ -1,0 +1,7 @@
+configurations:
+  - configuration.yaml
+
+namespace: default
+
+resources:
+- frps.yaml

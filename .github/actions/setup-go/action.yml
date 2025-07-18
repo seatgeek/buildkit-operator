@@ -1,0 +1,32 @@
+name: 'Setup Go with Caching'
+description: 'Sets up Go with module and tool caching'
+inputs:
+  go-version:
+    description: 'Go version to install'
+    required: false
+    default: '1.24'
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Cache Go tools
+      uses: actions/cache@v4
+      with:
+        path: bin
+        key: ${{ runner.os }}-go-tools-${{ hashFiles('Makefile') }}
+        restore-keys: |
+          ${{ runner.os }}-go-tools-

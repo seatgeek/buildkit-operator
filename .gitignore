@@ -1,0 +1,18 @@
+# editor and IDE paraphernalia
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+kubeconfig
+*.kubeconfig
+
+bin/
+build/
+
+cover.out
+coverage.xml
+code-quality-report.json
+
+main

@@ -1,0 +1,9 @@
+serverAddr = "localhost"
+serverPort = 30000
+
+[[proxies]]
+name = "webhook"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 9443
+remotePort = 443

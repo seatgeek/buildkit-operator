@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request: ~
+  workflow_dispatch: ~
+
+jobs:
+  go-mod-tidy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go
+      - run: go mod tidy
+      - run: |
+          git diff --exit-code --quiet go.mod go.sum || (echo "go.mod or go.sum is out of date. Please run 'go mod tidy' and commit the changes." && exit 1)
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go
+      - run: make lint || (echo "::notice Run 'make lint-fix' locally to fix this" && exit 1)
+
+  test:
+    permissions:
+      contents: read  # for actions/checkout to fetch code
+      checks: write  # for mikepenz/action-junit-report to update checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go
+
+      - run: make test-with-coverage
+
+      - uses: mikepenz/action-junit-report@v5
+        if: ${{ !cancelled() }}
+        with:
+          report_paths: '**/build/reports/unit-tests.xml'
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./build/reports/unit-tests.xml
+
+      - uses: codecov/codecov-action@v5.4.3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./build/reports/coverage.out
+
+  build-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go
+
+      - run: make generate
+      - run: |
+          git diff --exit-code || (echo "Manifests are out of date. Please run 'make generate' and commit the changes." && exit 1)
