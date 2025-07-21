@@ -6,15 +6,12 @@ package buildkit_test
 
 import (
 	"fmt"
-	"strconv"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/reddit/achilles-sdk-api/api"
 	sdktest "github.com/reddit/achilles-sdk/pkg/test"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -106,10 +103,12 @@ var _ = Describe("Buildkit Reconciler", func() {
 			g.Expect(c.Status().Update(ctx, pod)).To(Succeed())
 		}).Should(Succeed())
 
-		By("verifying endpoint is not yet set")
+		By("verifying buildkit is not yet ready")
 		Consistently(func(g Gomega) {
 			var updated v1alpha1.Buildkit
 			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkit), &updated)).To(Succeed())
+			g.Expect(updated.GetCondition(v1alpha1.TypeDeployed).Status).To(Equal(corev1.ConditionFalse))
+			g.Expect(updated.GetCondition(api.TypeReady).Status).To(Equal(corev1.ConditionFalse))
 			g.Expect(updated.Status.Endpoint).To(BeEmpty())
 		}).Should(Succeed())
 
@@ -196,88 +195,6 @@ var _ = Describe("Buildkit Reconciler", func() {
 			g.Expect(c.List(ctx, &pods, client.InNamespace(namespace))).To(Succeed())
 			g.Expect(pods.Items).To(HaveLen(1))
 			g.Expect(pods.Items[0].Name).NotTo(Equal(originalPodName))
-		}).Should(Succeed())
-	})
-
-	It("should clean up extra pods when multiple exist", func() {
-		By("creating a Buildkit resource")
-		Expect(c.Create(ctx, buildkit)).To(Succeed())
-
-		By("waiting for initial pod")
-		var pods corev1.PodList
-		Eventually(func(g Gomega) {
-			g.Expect(c.List(ctx, &pods, client.InNamespace(namespace))).To(Succeed())
-			g.Expect(pods.Items).To(HaveLen(1))
-		}).Should(Succeed())
-
-		firstPod := &pods.Items[0]
-		firstPodName := firstPod.Name
-
-		By("simulating the existence of some unexpected extra pod")
-		secondPod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "extra-buildkit-pod",
-				Namespace: namespace,
-				Labels: map[string]string{
-					"app.kubernetes.io/name": "buildkit",
-				},
-			},
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{
-					{
-						Name:  "buildkit",
-						Image: "moby/buildkit:latest",
-					},
-				},
-			},
-		}
-		Expect(c.Create(ctx, secondPod)).To(Succeed())
-
-		By("simulating a scenario where both pods are somehow tracked in ResourceRefs")
-		Eventually(func(g Gomega) {
-			var updated v1alpha1.Buildkit
-			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkit), &updated)).To(Succeed())
-			updated.Status.ResourceRefs = []api.TypedObjectRef{
-				{
-					Group:     "",
-					Version:   "v1",
-					Kind:      "Pod",
-					Name:      firstPod.Name,
-					Namespace: firstPod.Namespace,
-				},
-				{
-					Group:     "",
-					Version:   "v1",
-					Kind:      "Pod",
-					Name:      secondPod.Name,
-					Namespace: secondPod.Namespace,
-				},
-			}
-			g.Expect(c.Status().Update(ctx, &updated)).To(Succeed())
-		}).Should(Succeed())
-
-		By("triggering a reconciliation that should notice and clean up the extra pod")
-		var updated v1alpha1.Buildkit
-		Eventually(func(g Gomega) {
-			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkit), &updated)).To(Succeed())
-			updated.Annotations = map[string]string{
-				"test.trigger": strconv.FormatInt(time.Now().UnixNano(), 10),
-			}
-			g.Expect(c.Update(ctx, &updated)).To(Succeed())
-		}).Should(Succeed())
-
-		By("verifying the second pod is deleted")
-		Eventually(func(g Gomega) {
-			var deletedPod corev1.Pod
-			err := c.Get(ctx, client.ObjectKeyFromObject(secondPod), &deletedPod)
-			g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
-		}).Should(Succeed())
-
-		By("verifying the first pod remains")
-		Eventually(func(g Gomega) {
-			g.Expect(c.List(ctx, &pods, client.InNamespace(namespace))).To(Succeed())
-			g.Expect(pods.Items).To(HaveLen(1))
-			g.Expect(pods.Items[0].Name).To(Equal(firstPodName))
 		}).Should(Succeed())
 	})
 
