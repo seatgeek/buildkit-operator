@@ -75,7 +75,7 @@ var _ = Describe("BuildkitValidator", func() {
 				},
 			}
 
-			Expect(c.Create(ctx, buildkit)).To(MatchError(ContainSubstring("BuildkitTemplate 'non-existent-template' not found")))
+			Expect(c.Create(ctx, buildkit)).To(MatchError(ContainSubstring("Not found: \"non-existent-template\"")))
 		})
 
 		It("should allow creation with a valid template reference", func() {
@@ -90,6 +90,97 @@ var _ = Describe("BuildkitValidator", func() {
 			}
 
 			Expect(c.Create(ctx, buildkit)).To(Succeed())
+		})
+	})
+
+	Context("When RequireOwner validation is involved", func() {
+		const templateWithRequireOwnerName = "template-with-require-owner"
+		const templateWithoutRequireOwnerName = "template-without-require-owner"
+
+		BeforeEach(func() {
+			templateWithRequireOwner := &v1alpha1.BuildkitTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      templateWithRequireOwnerName,
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					PodTemplate: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{},
+						},
+					},
+					BuildkitdToml: "",
+					RequireOwner:  true,
+				},
+			}
+			Expect(c.Create(ctx, templateWithRequireOwner)).To(Succeed())
+
+			templateWithoutRequireOwner := &v1alpha1.BuildkitTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      templateWithoutRequireOwnerName,
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					PodTemplate: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{},
+						},
+					},
+					BuildkitdToml: "",
+					RequireOwner:  false,
+				},
+			}
+			Expect(c.Create(ctx, templateWithoutRequireOwner)).To(Succeed())
+		})
+
+		It("should allow creation when RequireOwner=false and no owner references", func() {
+			buildkit := &v1alpha1.Buildkit{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-buildkit-no-owner-not-required",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.BuildkitSpec{
+					Template: templateWithoutRequireOwnerName,
+				},
+			}
+
+			Expect(c.Create(ctx, buildkit)).To(Succeed())
+		})
+
+		It("should allow creation when RequireOwner=true and owner references are present", func() {
+			buildkit := &v1alpha1.Buildkit{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-buildkit-with-owner",
+					Namespace: namespace,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "v1",
+							Kind:       "Pod",
+							Name:       "some-owner",
+							UID:        "123456",
+						},
+					},
+				},
+				Spec: v1alpha1.BuildkitSpec{
+					Template: templateWithRequireOwnerName,
+				},
+			}
+
+			Expect(c.Create(ctx, buildkit)).To(Succeed())
+		})
+
+		It("should reject creation when RequireOwner=true but no owner references are present", func() {
+			buildkit := &v1alpha1.Buildkit{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-buildkit-no-owner",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.BuildkitSpec{
+					Template: templateWithRequireOwnerName,
+				},
+			}
+
+			Expect(c.Create(ctx, buildkit)).To(MatchError(ContainSubstring("requires owner references but none are present")))
 		})
 	})
 })

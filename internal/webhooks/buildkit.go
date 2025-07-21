@@ -7,7 +7,6 @@ package webhooks
 import (
 	"context"
 	"fmt"
-	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -42,27 +41,21 @@ func (v *BuildkitValidator) validate(ctx context.Context, obj runtime.Object) (a
 
 	var errorList field.ErrorList
 
+	var template v1alpha1.BuildkitTemplate
+
+	// Validate template
 	if bk.Spec.Template == "" {
 		errorList = append(errorList, field.Required(field.NewPath("spec", "template"), "BuildkitTemplate name must be specified"))
-	} else {
-		ctx, cancel := context.WithTimeout(ctx, time.Second)
-		defer cancel()
-
-		// Ensure the referenced BuildkitTemplate exists
-		var template v1alpha1.BuildkitTemplate
-		err := v.c.Get(ctx, client.ObjectKey{Namespace: bk.Namespace, Name: bk.Spec.Template}, &template)
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return nil, apierrors.NewInternalError(fmt.Errorf("failed to get BuildkitTemplate '%s' in namespace '%s': %w", bk.Spec.Template, bk.Namespace, err))
-			}
-
-			errorList = append(errorList, &field.Error{
-				Type:     field.ErrorTypeNotFound,
-				Field:    field.NewPath("spec", "template").String(),
-				BadValue: bk.Spec.Template,
-				Detail:   fmt.Sprintf("BuildkitTemplate '%s' not found in namespace '%s'", bk.Spec.Template, bk.Namespace),
-			})
+	} else if err := v.c.Get(ctx, client.ObjectKey{Namespace: bk.Namespace, Name: bk.Spec.Template}, &template); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return nil, apierrors.NewInternalError(fmt.Errorf("failed to get BuildkitTemplate '%s' in namespace '%s': %w", bk.Spec.Template, bk.Namespace, err))
 		}
+		errorList = append(errorList, field.NotFound(field.NewPath("spec", "template"), bk.Spec.Template))
+	} else if template.Spec.RequireOwner && len(bk.GetOwnerReferences()) == 0 {
+		errorList = append(errorList, field.Required(
+			field.NewPath("metadata", "ownerReferences"),
+			fmt.Sprintf("BuildkitTemplate '%s' requires owner references but none are present", bk.Spec.Template),
+		))
 	}
 
 	if len(errorList) > 0 {
