@@ -8,6 +8,82 @@
 
 An operator for managing BuildKit instances on Kubernetes.
 
+## How it Works
+
+First, deploy one or more `BuildkitTemplate` resources that define a pod template and `buildkitd.toml` configuration for BuildKit instances:
+
+```yaml
+apiVersion: buildkit.seatgeek.io/v1alpha1
+kind: BuildkitTemplate
+metadata:
+  name: buildkit-arm64
+  namespace: some-ns
+spec:
+  buildkitdToml: |
+    [log]
+      format = "json"
+
+    [worker.oci]
+      enabled = true
+      max-parallelism = 3
+      cniPoolSize = 16
+
+    [worker.containerd]
+      enabled = false
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: buildkit-arm64
+    spec:
+      containers:
+        - name: buildkit
+          securityContext:
+            privileged: true
+            runAsNonRoot: false
+            readOnlyRootFilesystem: false
+            allowPrivilegeEscalation: true
+            seccompProfile:
+              type: Unconfined
+            appArmorProfile:
+              type: Unconfined
+      nodeSelector:
+        kubernetes.io/arch: arm64
+        kubernetes.io/os: linux
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: buildkit
+          effect: NoSchedule
+```
+
+Then create any number of `Buildkit` resources that reference the templates:
+
+```yaml
+apiVersion: buildkit.seatgeek.io/v1alpha1
+kind: Buildkit
+metadata:
+  name: buildkit-arm64-instance
+  namespace: some-ns
+spec:
+  template: buildkit-arm64
+```
+
+The operator will then deploy a BuildKit pod for each `Buildkit` resource, setting the TCP connection URL into the resource's status:
+
+```yaml
+apiVersion: buildkit.seatgeek.io/v1alpha1
+kind: Buildkit
+metadata:
+  name: buildkit-arm64-instance
+  namespace: some-ns
+spec: ~ # hidden for brevity
+status:
+  endpoint: tcp://10.1.2.3:1234
+```
+
+Use the `.status.endpoint` field to connect to the BuildKit instance. When you're done, delete the `Buildkit` resource and the associated pod will be cleaned up automatically.
+
 ## Local Development
 
 ### Prerequisites

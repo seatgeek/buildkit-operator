@@ -1,0 +1,47 @@
+metadata:
+  creationTimestamp: null
+  generateName: test-buildkit-
+  labels:
+    app.kubernetes.io/name: buildkit
+  namespace: test-ns
+spec:
+  containers:
+  - args:
+    - --addr
+    - tcp://0.0.0.0:1234
+    image: moby/buildkit:latest
+    livenessProbe:
+      failureThreshold: 6
+      grpc:
+        port: 1234
+        service: null
+      initialDelaySeconds: 5
+      periodSeconds: 30
+    name: buildkit
+    ports:
+    - containerPort: 1234
+      name: tcp
+      protocol: TCP
+    readinessProbe:
+      failureThreshold: 2
+      grpc:
+        port: 1234
+        service: null
+      initialDelaySeconds: 5
+      periodSeconds: 15
+    resources:
+      limits:
+        cpu: 800m
+        memory: 800Mi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+    volumeMounts:
+    - mountPath: /home/user/.local/share/buildkit
+      name: buildkitd
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 900
+  volumes:
+  - emptyDir: {}
+    name: buildkitd
+status: {}

@@ -27,15 +27,15 @@ generate: controller-gen
 
 .PHONY: test
 test: generate envtest
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./...
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -v ./...
 
 .PHONY: test-fix
 test-fix: generate envtest
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -update -clean
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -v ./... -update -clean
 
 .PHONY: test-with-coverage
 test-with-coverage: gotestsum ensure-reports-dir generate envtest
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GOTESTSUM) --junitfile $(REPORTS_DIR)/unit-tests.xml -- -race -v -coverprofile=$(REPORTS_DIR)/coverage.out -covermode=atomic -v -cover ./...
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GOTESTSUM) --junitfile $(REPORTS_DIR)/unit-tests.xml -- -race -coverprofile=$(REPORTS_DIR)/coverage.out -covermode=atomic -v -cover ./...
 	make report-coverage
 
 .PHONY: ensure-reports-dir

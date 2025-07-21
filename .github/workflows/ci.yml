@@ -53,6 +53,7 @@ jobs:
 
   build-manifests:
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go
