@@ -43,11 +43,13 @@ spec:
                   format
                 type: string
               port:
+                default: 1234
                 description: Port is the TCP port number on which the Buildkit instance
                   will listen; default is 1234
                 format: int32
                 type: integer
               requireOwner:
+                default: false
                 description: RequireOwner indicates whether the Buildkit instance
                   must be created with an owner reference
                 type: boolean
@@ -8207,7 +8209,6 @@ spec:
                 type: object
             required:
             - buildkitdToml
-            - port
             - template
             type: object
           status:

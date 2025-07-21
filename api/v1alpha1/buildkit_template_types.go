@@ -34,9 +34,13 @@ type BuildkitTemplateSpec struct {
 	BuildkitdToml string `json:"buildkitdToml"`
 
 	// Port is the TCP port number on which the Buildkit instance will listen; default is 1234
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=1234
 	Port int32 `json:"port"`
 
 	// RequireOwner indicates whether the Buildkit instance must be created with an owner reference
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=false
 	RequireOwner bool `json:"requireOwner,omitempty"`
 }
 
