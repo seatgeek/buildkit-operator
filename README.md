@@ -77,7 +77,8 @@ kind: Buildkit
 metadata:
   name: buildkit-arm64-instance
   namespace: some-ns
-spec: ~ # hidden for brevity
+spec:
+  template: buildkit-arm64
 status:
   endpoint: tcp://10.1.2.3:1234
 ```
