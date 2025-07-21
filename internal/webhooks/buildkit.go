@@ -34,7 +34,7 @@ func NewBuildkitValidator(c client.Reader) *BuildkitValidator {
 	}
 }
 
-func (v *BuildkitValidator) validate(obj runtime.Object) (admission.Warnings, error) {
+func (v *BuildkitValidator) validate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	bk, ok := obj.(*v1alpha1.Buildkit)
 	if !ok {
 		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected Buildkit object but got %T", obj))
@@ -45,7 +45,7 @@ func (v *BuildkitValidator) validate(obj runtime.Object) (admission.Warnings, er
 	if bk.Spec.Template == "" {
 		errorList = append(errorList, field.Required(field.NewPath("spec", "template"), "BuildkitTemplate name must be specified"))
 	} else {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
 
 		// Ensure the referenced BuildkitTemplate exists
@@ -79,12 +79,12 @@ func (v *BuildkitValidator) validate(obj runtime.Object) (admission.Warnings, er
 	return nil, nil
 }
 
-func (v *BuildkitValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	return v.validate(obj) //nolint:contextcheck
+func (v *BuildkitValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+	return v.validate(ctx, obj)
 }
 
-func (v *BuildkitValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
-	return v.validate(newObj) //nolint:contextcheck
+func (v *BuildkitValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
+	return v.validate(ctx, newObj)
 }
 
 func (v *BuildkitValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
