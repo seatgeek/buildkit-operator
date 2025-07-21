@@ -263,6 +263,225 @@ func TestObjects(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "preserves fields missing from override",
+			base: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Labels: map[string]string{
+						"app":     "test",
+						"version": "1.0",
+						"keep":    "me",
+					},
+					Annotations: map[string]string{
+						"original": "value",
+					},
+				},
+			},
+			overrides: []corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							"version": "2.0",   // modify
+							"new":     "label", // add
+							// "app" and "keep" missing but should be preserved
+						},
+						Annotations: map[string]string{
+							"added": "annotation",
+							// "original" missing but should be preserved
+						},
+					},
+				},
+			},
+			want: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Labels: map[string]string{
+						"app":     "test",  // preserved
+						"version": "2.0",   // modified
+						"keep":    "me",    // preserved
+						"new":     "label", // added
+					},
+					Annotations: map[string]string{
+						"original": "value",      // preserved
+						"added":    "annotation", // added
+					},
+				},
+			},
+		},
+		{
+			name: "empty and nil values handled correctly",
+			base: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"keep":  "value",
+						"empty": "",
+					},
+				},
+			},
+			overrides: []corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							"empty":     "updated",
+							"new_empty": "",
+						},
+					},
+				},
+			},
+			want: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"keep":      "value",
+						"empty":     "updated",
+						"new_empty": "",
+					},
+				},
+			},
+		},
+		{
+			name: "container ports are appended (not merged)",
+			base: &corev1.Pod{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "app",
+							Image: "nginx:1.0",
+							Ports: []corev1.ContainerPort{
+								{Name: "http", ContainerPort: 80},
+								{Name: "metrics", ContainerPort: 9090},
+							},
+						},
+					},
+				},
+			},
+			overrides: []corev1.Pod{
+				{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{
+								Name:  "app",
+								Image: "nginx:2.0",
+								Ports: []corev1.ContainerPort{
+									{Name: "http", ContainerPort: 8080}, // duplicate name
+									{Name: "grpc", ContainerPort: 9000},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &corev1.Pod{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "app",
+							Image: "nginx:2.0",
+							Ports: []corev1.ContainerPort{
+								{Name: "http", ContainerPort: 8080},    // from override
+								{Name: "grpc", ContainerPort: 9000},    // from override
+								{Name: "http", ContainerPort: 80},      // from base (duplicate name)
+								{Name: "metrics", ContainerPort: 9090}, // from base
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "strategic merge of container env vars",
+			base: &corev1.Pod{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "app",
+							Image: "nginx:1.0",
+							Env: []corev1.EnvVar{
+								{Name: "ENV", Value: "prod"},
+								{Name: "DEBUG", Value: "false"},
+								{Name: "TIMEOUT", Value: "30"},
+							},
+						},
+						{
+							Name:  "sidecar",
+							Image: "proxy:1.0",
+						},
+					},
+				},
+			},
+			overrides: []corev1.Pod{
+				{
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{
+								Name:  "app",
+								Image: "nginx:2.0",
+								Env: []corev1.EnvVar{
+									{Name: "ENV", Value: "staging"},  // modify existing
+									{Name: "NEW_VAR", Value: "test"}, // add new
+									// DEBUG and TIMEOUT missing but should be preserved
+								},
+							},
+							// sidecar missing but should be preserved
+						},
+					},
+				},
+			},
+			want: &corev1.Pod{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "app",
+							Image: "nginx:2.0",
+							Env: []corev1.EnvVar{
+								{Name: "ENV", Value: "staging"},  // modified
+								{Name: "NEW_VAR", Value: "test"}, // added
+								{Name: "DEBUG", Value: "false"},  // preserved
+								{Name: "TIMEOUT", Value: "30"},   // preserved
+							},
+						},
+						{
+							Name:  "sidecar",
+							Image: "proxy:1.0", // preserved
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "string annotations are replaced not deeply merged",
+			base: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						"config.yaml": `app:
+  name: original
+  debug: true`,
+						"keep": "me",
+					},
+				},
+			},
+			overrides: []corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{
+							"config.yaml": `app:
+  timeout: 60`,
+							"new": "annotation",
+						},
+					},
+				},
+			},
+			want: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						"config.yaml": `app:
+  timeout: 60`, // replaced, not merged
+						"keep": "me",         // preserved
+						"new":  "annotation", // added
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

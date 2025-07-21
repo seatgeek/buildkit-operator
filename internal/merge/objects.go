@@ -13,10 +13,19 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 )
 
-// Objects merges `overrides` into `base` using the SMP (structural merge patch) approach.
-// - It intentionally does not remove fields present in base but missing from overrides
-// - It merges slices only if the `patchStrategy:"merge"` tag is present and the `patchMergeKey` identifies the unique field
+// Objects merges `overrides` into `base` using Kubernetes Strategic Merge Patch (SMP).
+// This performs ADDITIVE merging - it never deletes fields from base that are missing
+// in overrides, it only adds new fields or modifies existing ones.
+//
+// Key behaviors:
+// - Fields in base that are missing from override are PRESERVED (no deletions)
+// - Fields in override that don't exist in base are ADDED
+// - Fields that exist in both are UPDATED with override's value
+// - Arrays are merged according to their `patchStrategy` struct tags (merge vs replace)
 // - Multiple overrides are applied in sequence
+//
+// This is ideal for layered configuration where you want to apply overrides on top
+// of defaults without losing any default values.
 //
 // Adapted from https://github.com/cisco-open/operator-tools/blob/c07faa6d92b8102360a72bf478d8acf08b6fc76b/pkg/merge/merge_test.go
 // (c) Banzai Cloud; licensed under the Apache License 2.0
@@ -45,9 +54,22 @@ func mergeOne[T any](base *T, override T) error {
 	if err != nil {
 		return fmt.Errorf("failed to produce patch meta from struct: %w", err)
 	}
+
+	// Create an additive merge patch that preserves existing fields in base.
+	// We use CreateThreeWayMergePatch with identical original/modified parameters
+	// to get the effect of IgnoreDeletions=true, which ensures we never delete
+	// fields from base that are missing in override - we only add or modify fields.
+	//
+	// This is equivalent to a two-way merge with DiffOptions{IgnoreDeletions: true}
+	// (but the Kubernetes strategic patch API doesn't expose DiffOptions directly).
+	//
+	// The three-way merge algorithm computes:
+	// - deletions = diffMaps(original=override, modified=override) = empty (no changes)
+	// - additions = diffMaps(current=base, modified=override, IgnoreDeletions=true)
+	// - result = merge(deletions=empty, additions) = additions only
 	patch, err := strategicpatch.CreateThreeWayMergePatch(overrideBytes, overrideBytes, baseBytes, patchMeta, true)
 	if err != nil {
-		return fmt.Errorf("failed to create three way merge patch: %w", err)
+		return fmt.Errorf("failed to create merge patch: %w", err)
 	}
 
 	merged, err := strategicpatch.StrategicMergePatchUsingLookupPatchMeta(baseBytes, patch, patchMeta)
