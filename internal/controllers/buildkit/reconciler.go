@@ -102,6 +102,10 @@ func (r *reconciler) runBuildkit() *state {
 			}
 
 			// If we reach here, the pod is running and all containers are ready!
+			if len(pod.Spec.Containers) == 0 || len(pod.Spec.Containers[0].Ports) == 0 {
+				log.Errorw("Buildkit pod does not have containers with ports defined", "pod", pod.Name)
+				return nil, types.ErrorResult(fmt.Errorf("buildkit pod %s does not have containers with ports defined", pod.Name))
+			}
 			obj.Status.Endpoint = fmt.Sprintf("tcp://%s", net.JoinHostPort(pod.Status.PodIP, strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort))))
 
 			return nil, types.DoneResult()
