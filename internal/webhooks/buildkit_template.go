@@ -73,7 +73,7 @@ func (v *BuildkitTemplateValidator) validate(obj runtime.Object) (admission.Warn
 		}
 
 		errorList = append(errorList, field.Invalid(
-			field.NewPath("spec", "buildkitToml"),
+			field.NewPath("spec", "buildkitdToml"),
 			bkt.Spec.BuildkitdToml,
 			reason,
 		))
