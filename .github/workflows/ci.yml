@@ -120,11 +120,11 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
-        labels: |
-          org.opencontainers.image.title=Buildkit Operator
-          org.opencontainers.image.description=Kubernetes operator for managing BuildKit instances
-          org.opencontainers.image.vendor=SeatGeek
-          org.opencontainers.image.licenses=Apache-2.0
+          labels: |
+            org.opencontainers.image.title=Buildkit Operator
+            org.opencontainers.image.description=Kubernetes operator for managing BuildKit instances
+            org.opencontainers.image.vendor=SeatGeek
+            org.opencontainers.image.licenses=Apache-2.0
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
