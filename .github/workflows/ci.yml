@@ -80,6 +80,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build binaries for multiple architectures
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o operator-amd64 cmd/operator/main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -o operator-arm64 cmd/operator/main.go
+          chmod +x operator-amd64 operator-arm64
+
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
@@ -99,6 +120,11 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
+        labels: |
+          org.opencontainers.image.title=Buildkit Operator
+          org.opencontainers.image.description=Kubernetes operator for managing BuildKit instances
+          org.opencontainers.image.vendor=SeatGeek
+          org.opencontainers.image.licenses=Apache-2.0
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
