@@ -71,7 +71,7 @@ jobs:
       - name: Validate Helm templates match generated sources
         run: ./hack/validate-helm-templates.sh
 
-  build-and-publish:
+  build-image:
     needs: [go-mod-tidy, lint, test, validate-manifests]
     runs-on: ubuntu-latest
     permissions:
@@ -137,8 +137,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Install Helm
-        uses: azure/setup-helm@v4
+  publish-chart:
+    needs: [build-image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
         with:
           version: '3.14.0'
 
