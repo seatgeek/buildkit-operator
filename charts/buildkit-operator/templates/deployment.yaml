@@ -81,13 +81,6 @@ spec:
           name: metrics
           protocol: TCP
         {{- end }}
-        env:
-        - name: KUBERNETES_CLUSTER_DOMAIN
-          value: {{ quote .Values.kubernetesClusterDomain | default "cluster.local" }}
-        {{- range .Values.operator.env }}
-        - name: {{ .name }}
-          value: {{ .value | quote }}
-        {{- end }}
         {{- if .Values.webhook.enabled }}
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
