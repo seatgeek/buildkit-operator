@@ -51,13 +51,23 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./build/reports/coverage.out
 
-  build-manifests:
+  validate-manifests:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go
+      - uses: mikefarah/yq@v4.44.1
+      - uses: azure/setup-helm@v4
+        with:
+          version: '3.14.0'
 
-      - run: make generate
-      - run: |
+      - name: Generate manifests
+        run: make generate
+
+      - name: Check if committed manifests are up-to-date
+        run: |
           git diff --exit-code || (echo "Manifests are out of date. Please run 'make generate' and commit the changes." && exit 1)
+
+      - name: Validate Helm templates match generated sources
+        run: ./hack/validate-helm-templates.sh
