@@ -9,7 +9,9 @@ metadata:
     app.kubernetes.io/part-of: buildkit-operator
     {{- include "buildkit-operator.labels" . | nindent 4 }}
 rules:
-- resources:
+- apiGroups:
+  - ""
+  resources:
   - configmaps
   - pods
   verbs:

@@ -116,9 +116,9 @@ echo "🔍 Validating RBAC..."
 # Extract ClusterRole from rendered templates
 yq eval 'select(.kind == "ClusterRole" and .metadata.name == "buildkit-operator-manager")' "$TEMP_DIR/helm-rendered.yaml" > "$TEMP_DIR/helm-rbac.yaml"
 
-# Handle any implicit vs explicit apiGroups difference consistently
-yq eval '.rules | map(select(.apiGroups == null) |= . + {"apiGroups": [""]} | .)' "$RBAC_SOURCE" > "$TEMP_DIR/source-rbac-normalized.yaml"
-yq eval '.rules | map(select(.apiGroups == null) |= . + {"apiGroups": [""]} | .)' "$TEMP_DIR/helm-rbac.yaml" > "$TEMP_DIR/helm-rbac-normalized.yaml"
+# Handle any implicit vs explicit apiGroups difference consistently and ensure consistent field ordering
+yq eval '.rules | map(select(.apiGroups == null) |= . + {"apiGroups": [""]} | sort_keys(..))' "$RBAC_SOURCE" > "$TEMP_DIR/source-rbac-normalized.yaml"
+yq eval '.rules | map(select(.apiGroups == null) |= . + {"apiGroups": [""]} | sort_keys(..))' "$TEMP_DIR/helm-rbac.yaml" > "$TEMP_DIR/helm-rbac-normalized.yaml"
 
 if ! diff -u "$TEMP_DIR/source-rbac-normalized.yaml" "$TEMP_DIR/helm-rbac-normalized.yaml"; then
     echo "❌ RBAC rules don't match between source and Helm template!"
