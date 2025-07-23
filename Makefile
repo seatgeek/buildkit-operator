@@ -24,6 +24,8 @@ generate: controller-gen
 	$(CONTROLLER_GEN) object paths="{./api/...}"
 	./hack/patch-crds.sh
 	cp config/webhook/manifests.yaml kind/webhook/manifests.yaml
+	rm charts/buildkit-operator/crds/*
+	cp config/crd/bases/*.yaml charts/buildkit-operator/crds/
 
 .PHONY: test
 test: generate envtest

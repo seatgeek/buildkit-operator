@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "buildkit-operator.fullname" . }}-controller-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/created-by: buildkit-operator
+    app.kubernetes.io/part-of: buildkit-operator
+    control-plane: controller-manager
+    {{- include "buildkit-operator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+      {{- include "buildkit-operator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+        {{- with .Values.operator.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        control-plane: controller-manager
+        {{- include "buildkit-operator.selectorLabels" . | nindent 8 }}
+        {{- with .Values.operator.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      containers:
+      - name: manager
+        {{- if .Values.image.digest }}
+        image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+        {{- else }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        {{- end }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        args:
+        - --incluster
+        - --health-addr=:8081
+        {{- if .Values.operator.metrics.enabled }}
+        - --metrics-addr=:{{ .Values.operator.metrics.port }}
+        {{- end }}
+        {{- if .Values.operator.leaderElection }}
+        - --leader-election=true
+        - --leader-election-id={{ include "buildkit-operator.fullname" . }}-election
+        {{- end }}
+        command:
+        - /manager
+        env:
+        - name: KUBERNETES_CLUSTER_DOMAIN
+          value: {{ quote .Values.kubernetesClusterDomain | default "cluster.local" }}
+        # Additional environment variables from operator.env
+        {{- with .Values.operator.env }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: {{ .Values.operator.probes.liveness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.operator.probes.liveness.periodSeconds }}
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: {{ .Values.operator.probes.readiness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.operator.probes.readiness.periodSeconds }}
+        resources: {{- toYaml .Values.operator.resources | nindent 10 }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        ports:
+        {{- if .Values.webhook.enabled }}
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        {{- end }}
+        {{- if .Values.operator.metrics.enabled }}
+        - containerPort: {{ .Values.operator.metrics.port }}
+          name: metrics
+          protocol: TCP
+        {{- end }}
+        env:
+        - name: KUBERNETES_CLUSTER_DOMAIN
+          value: {{ quote .Values.kubernetesClusterDomain | default "cluster.local" }}
+        {{- range .Values.operator.env }}
+        - name: {{ .name }}
+          value: {{ .value | quote }}
+        {{- end }}
+        {{- if .Values.webhook.enabled }}
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
+        {{- end }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      serviceAccountName: {{ include "buildkit-operator.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 10
+      {{- if .Values.webhook.enabled }}
+      volumes:
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: {{ include "buildkit-operator.fullname" . }}-webhook-server-cert
+      {{- end }}
+      {{- with .Values.operator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

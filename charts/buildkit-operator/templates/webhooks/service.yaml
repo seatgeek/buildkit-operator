@@ -1,0 +1,21 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "buildkit-operator.webhookServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/created-by: buildkit-operator
+    app.kubernetes.io/part-of: buildkit-operator
+    {{- include "buildkit-operator.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.webhook.service.type }}
+  ports:
+  - port: {{ .Values.webhook.service.port }}
+    protocol: TCP
+    targetPort: webhook-server
+  selector:
+    control-plane: controller-manager
+    {{- include "buildkit-operator.selectorLabels" . | nindent 4 }}
+{{- end }}

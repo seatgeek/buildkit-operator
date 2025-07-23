@@ -1,0 +1,20 @@
+{{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "buildkit-operator.fullname" . }}-serving-cert
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: certificate
+    app.kubernetes.io/created-by: buildkit-operator
+    app.kubernetes.io/part-of: buildkit-operator
+    {{- include "buildkit-operator.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "buildkit-operator.fullname" . }}-webhook-server-cert
+  issuerRef:
+    kind: Issuer
+    name: {{ include "buildkit-operator.fullname" . }}-webhook-ca
+  dnsNames:
+  - {{ include "buildkit-operator.webhookServiceName" . }}.{{ .Release.Namespace }}.svc
+  - {{ include "buildkit-operator.webhookServiceName" . }}.{{ .Release.Namespace }}.svc.{{ .Values.kubernetesClusterDomain | default "cluster.local" }}
+{{- end }}

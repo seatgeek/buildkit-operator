@@ -1,0 +1,22 @@
+apiVersion: v2
+name: buildkit-operator
+description: Helm chart for the BuildKit Operator - manages BuildKit instances on Kubernetes
+type: application
+version: 0.1.0
+appVersion: "latest"
+
+keywords:
+  - buildkit
+  - docker
+  - container
+  - build
+  - kubernetes
+  - operator
+
+home: https://github.com/seatgeek/buildkit-operator
+sources:
+  - https://github.com/seatgeek/buildkit-operator
+maintainers:
+  - name: SeatGeek Platform Team
+    email: platform@seatgeek.com
+    url: https://github.com/seatgeek
