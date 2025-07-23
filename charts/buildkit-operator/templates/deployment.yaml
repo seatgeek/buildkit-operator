@@ -49,11 +49,8 @@ spec:
         {{- end }}
         command:
         - /manager
-        env:
-        - name: KUBERNETES_CLUSTER_DOMAIN
-          value: {{ quote .Values.kubernetesClusterDomain | default "cluster.local" }}
-        # Additional environment variables from operator.env
         {{- with .Values.operator.env }}
+        env:
         {{- toYaml . | nindent 8 }}
         {{- end }}
         livenessProbe:

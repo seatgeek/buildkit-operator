@@ -16,5 +16,5 @@ spec:
     name: {{ include "buildkit-operator.fullname" . }}-webhook-ca
   dnsNames:
   - {{ include "buildkit-operator.webhookServiceName" . }}.{{ .Release.Namespace }}.svc
-  - {{ include "buildkit-operator.webhookServiceName" . }}.{{ .Release.Namespace }}.svc.{{ .Values.kubernetesClusterDomain | default "cluster.local" }}
+  - {{ include "buildkit-operator.webhookServiceName" . }}.{{ .Release.Namespace }}.svc.cluster.local
 {{- end }}
