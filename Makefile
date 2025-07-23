@@ -59,6 +59,10 @@ report-coverage: gocover-cobertura
 build: generate
 	go build cmd/operator/main.go
 
+.PHONY: build-docker
+build-docker: generate
+	docker build -t buildkit-operator:latest -f Dockerfile .
+
 .PHONY: start_webhook_reverse_proxy
 start_webhook_reverse_proxy:
 	killall frpc || true
