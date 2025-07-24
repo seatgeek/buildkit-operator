@@ -102,11 +102,18 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.operator.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.operator.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.imagePullSecrets }}
+      {{- if .Values.operator.priorityClassName }}
+      priorityClassName: {{ .Values.operator.priorityClassName }}
+      {{- end }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}

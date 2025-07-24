@@ -81,6 +81,12 @@ operator:
   # Affinity for pod assignment
   affinity: {}
 
+  # Topology spread constraints for operator pods
+  topologySpreadConstraints: []
+
+  # Priority class for the operator pod
+  priorityClassName: ""
+
   # Metrics configuration
   metrics:
     # Enable metrics endpoint
