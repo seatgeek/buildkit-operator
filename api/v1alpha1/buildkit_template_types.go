@@ -33,17 +33,19 @@ type BuildkitTemplateSpec struct {
 	// +kubebuilder:validation:Optional
 	Rootless bool `json:"rootless,omitempty"`
 
-	// +kubebuilder:validation:Optional
-	DebugLogging bool `json:"debugLogging,omitempty"`
-
 	// Port is the TCP port number on which the Buildkit instance will listen; default is 1234
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=1234
 	Port int32 `json:"port"`
 
 	// BuildkitdToml is the configuration for Buildkit in TOML format
-	// +kubebuilder:validation:Required
-	BuildkitdToml string `json:"buildkitdToml"`
+	// +kubebuilder:validation:Optional
+	BuildkitdToml string `json:"buildkitdToml,omitempty"`
+
+	// Image is the container image to use for the Buildkit instance
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="moby/buildkit:latest"
+	Image string `json:"image,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
@@ -61,6 +63,10 @@ type BuildkitTemplateSpec struct {
 	// Lifecycle defines the lifecycle settings for the Buildkit pods
 	// +kubebuilder:validation:Optional
 	Lifecycle BuildkitTemplatePodLifecycle `json:"lifecycle,omitempty"`
+
+	// Observability defines the observability settings for the Buildkit pods
+	// +kubebuilder:validation:Optional
+	Observability BuildkitTemplateObservability `json:"observability,omitempty"`
 }
 
 type BuildkitTemplatePodScheduling struct {
@@ -95,6 +101,25 @@ type BuildkitTemplatePodLifecycle struct {
 
 	// +kubebuilder:validation:Optional
 	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	PreStopScript bool `json:"preStopScript,omitempty"`
+}
+
+type BuildkitTemplateObservability struct {
+	// +kubebuilder:validation:Optional
+	DebugLogging bool `json:"debugLogging,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	OTLP *BuildkitTemplateOTLPSettings `json:"otlp,omitempty"`
+}
+
+type BuildkitTemplateOTLPSettings struct {
+	// +kubebuilder:validation:Required
+	ServiceName string `json:"serviceName"`
+
+	// +kubebuilder:validation:Optional
+	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
 }
 
 type BuildkitTemplateStatus struct {

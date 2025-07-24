@@ -7,6 +7,7 @@ package buildkit
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -60,7 +61,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 			Containers: []corev1.Container{
 				{
 					Name:  buildkitContainerName,
-					Image: "moby/buildkit:latest",
+					Image: template.Spec.Image,
 					VolumeMounts: []corev1.VolumeMount{
 						{
 							Name:      "buildkitd",
@@ -146,11 +147,48 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 		}
 	}
 
-	if template.Spec.DebugLogging {
+	if template.Spec.Observability.DebugLogging {
 		container.Args = append(container.Args, "--debug")
 	}
 
-	// Mount config map if needed
+	if template.Spec.Observability.OTLP != nil {
+		var attrs strings.Builder
+		attrs.WriteString("service.name=")
+		attrs.WriteString(template.Spec.Observability.OTLP.ServiceName)
+
+		for k, v := range template.Spec.Observability.OTLP.ResourceAttributes {
+			attrs.WriteRune(',')
+			attrs.WriteString(k)
+			attrs.WriteRune('=')
+			attrs.WriteString(v)
+		}
+
+		container.Env = append(container.Env,
+			corev1.EnvVar{
+				Name: "HOST_IP",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						APIVersion: "v1",
+						FieldPath:  "status.hostIP",
+					},
+				},
+			},
+			corev1.EnvVar{
+				Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
+				Value: "http://$(HOST_IP):4317",
+			},
+			corev1.EnvVar{
+				Name:  "OTEL_SERVICE_NAME",
+				Value: template.Spec.Observability.OTLP.ServiceName,
+			},
+			corev1.EnvVar{
+				Name:  "OTEL_RESOURCE_ATTRIBUTES",
+				Value: attrs.String(),
+			},
+		)
+	}
+
+	// Mount buildkitd.toml config map if needed
 	if configMap := buildkit_template.NewBuilder(&template).ConfigMap(); configMap != nil {
 		pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
 			Name: "config",
@@ -172,6 +210,35 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 			Name:      "config",
 			MountPath: mountPath,
 		})
+	}
+
+	// Configure pre-stop script if needed
+	if configMap := buildkit_template.NewBuilder(&template).ScriptsConfigMap(); configMap != nil {
+		pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
+			Name: "scripts",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: configMap.Name,
+					},
+					DefaultMode: ptr.To(int32(0o755)),
+				},
+			},
+		})
+
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+			Name:      "scripts",
+			MountPath: "/usr/local/bin/buildkit-prestop.sh",
+			SubPath:   buildkit_template.PreStopScriptName,
+		})
+
+		container.Lifecycle = &corev1.Lifecycle{
+			PreStop: &corev1.LifecycleHandler{
+				Exec: &corev1.ExecAction{
+					Command: []string{"/bin/sh", "/usr/local/bin/buildkit-prestop.sh"},
+				},
+			},
+		}
 	}
 
 	return pod, nil

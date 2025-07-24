@@ -36,8 +36,7 @@ var _ = Describe("Buildkit Reconciler", func() {
 				Namespace: namespace,
 			},
 			Spec: v1alpha1.BuildkitTemplateSpec{
-				BuildkitdToml: "",
-				Port:          1234,
+				Port: 1234,
 			},
 		}
 		Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())

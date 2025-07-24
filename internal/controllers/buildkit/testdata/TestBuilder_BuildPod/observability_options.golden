@@ -1,6 +1,4 @@
 metadata:
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/buildkit: unconfined
   creationTimestamp: null
   generateName: test-buildkit-
   labels:
@@ -10,11 +8,23 @@ spec:
   containers:
   - args:
     - --addr
-    - unix:///run/user/1000/buildkit/buildkitd.sock
+    - unix:///run/buildkit/buildkitd.sock
     - --addr
     - tcp://0.0.0.0:1234
-    - --oci-worker-no-process-sandbox
-    image: moby/buildkit:rootless
+    - --debug
+    env:
+    - name: HOST_IP
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: status.hostIP
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: http://$(HOST_IP):4317
+    - name: OTEL_SERVICE_NAME
+      value: buildkit-service
+    - name: OTEL_RESOURCE_ATTRIBUTES
+      value: service.name=buildkit-service,deployment.environment=ci
+    image: moby/buildkit:latest
     livenessProbe:
       failureThreshold: 6
       grpc:
@@ -36,12 +46,9 @@ spec:
       periodSeconds: 15
     resources: {}
     securityContext:
-      runAsGroup: 1000
-      runAsUser: 1000
-      seccompProfile:
-        type: Unconfined
+      privileged: true
     volumeMounts:
-    - mountPath: /home/user/.local/share/buildkit
+    - mountPath: /var/lib/buildkit
       name: buildkitd
   volumes:
   - emptyDir: {}

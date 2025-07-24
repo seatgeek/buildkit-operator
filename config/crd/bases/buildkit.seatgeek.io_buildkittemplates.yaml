@@ -47,8 +47,11 @@ spec:
                 items:
                   type: string
                 type: array
-              debugLogging:
-                type: boolean
+              image:
+                default: moby/buildkit:latest
+                description: Image is the container image to use for the Buildkit
+                  instance
+                type: string
               lifecycle:
                 description: Lifecycle defines the lifecycle settings for the Buildkit
                   pods
@@ -56,6 +59,8 @@ spec:
                   activeDeadlineSeconds:
                     format: int64
                     type: integer
+                  preStopScript:
+                    type: boolean
                   requireOwner:
                     default: false
                     description: RequireOwner indicates whether the Buildkit instance
@@ -72,6 +77,24 @@ spec:
                     default: 900
                     format: int64
                     type: integer
+                type: object
+              observability:
+                description: Observability defines the observability settings for
+                  the Buildkit pods
+                properties:
+                  debugLogging:
+                    type: boolean
+                  otlp:
+                    properties:
+                      resourceAttributes:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      serviceName:
+                        type: string
+                    required:
+                    - serviceName
+                    type: object
                 type: object
               podAnnotations:
                 additionalProperties:
@@ -1291,8 +1314,6 @@ spec:
                 type: object
               serviceAccountName:
                 type: string
-            required:
-            - buildkitdToml
             type: object
           status:
             properties:

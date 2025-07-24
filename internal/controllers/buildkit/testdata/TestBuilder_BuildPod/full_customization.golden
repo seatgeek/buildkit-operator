@@ -30,7 +30,25 @@ spec:
     command:
     - rootlesskit
     - buildkitd
+    env:
+    - name: HOST_IP
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: status.hostIP
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: http://$(HOST_IP):4317
+    - name: OTEL_SERVICE_NAME
+      value: custom-buildkit-service
+    - name: OTEL_RESOURCE_ATTRIBUTES
+      value: service.name=custom-buildkit-service,deployment.environment=ci
     image: moby/buildkit:latest
+    lifecycle:
+      preStop:
+        exec:
+          command:
+          - /bin/sh
+          - /usr/local/bin/buildkit-prestop.sh
     livenessProbe:
       failureThreshold: 6
       grpc:
@@ -67,6 +85,9 @@ spec:
       name: buildkitd
     - mountPath: /home/user/.config/buildkit
       name: config
+    - mountPath: /usr/local/bin/buildkit-prestop.sh
+      name: scripts
+      subPath: buildkit-prestop.sh
   nodeSelector:
     kubernetes.io/arch: amd64
   priorityClassName: test-pc
@@ -90,4 +111,8 @@ spec:
   - configMap:
       name: buildkit-test-template-toml
     name: config
+  - configMap:
+      defaultMode: 493
+      name: buildkit-test-template-scripts
+    name: scripts
 status: {}

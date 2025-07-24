@@ -61,7 +61,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 					Namespace: "test-ns",
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					Port: 1234,
+					Port:  1234,
+					Image: "moby/buildkit:latest",
 				},
 			},
 		},
@@ -90,7 +91,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 					Namespace: "test-ns",
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					Port: 1234,
+					Port:  1234,
+					Image: "moby/buildkit:latest",
 					PodLabels: map[string]string{
 						"foo": "123",
 					},
@@ -118,12 +120,13 @@ func TestBuilder_BuildPod(t *testing.T) {
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:     1234,
+					Image:    "moby/buildkit:rootless",
 					Rootless: true,
 				},
 			},
 		},
 		{
-			name: "debug logging",
+			name: "observability options",
 			buildkit: &v1alpha1.Buildkit{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-buildkit",
@@ -139,8 +142,17 @@ func TestBuilder_BuildPod(t *testing.T) {
 					Namespace: "test-ns",
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					Port:         1234,
-					DebugLogging: true,
+					Port:  1234,
+					Image: "moby/buildkit:latest",
+					Observability: v1alpha1.BuildkitTemplateObservability{
+						DebugLogging: true,
+						OTLP: &v1alpha1.BuildkitTemplateOTLPSettings{
+							ServiceName: "buildkit-service",
+							ResourceAttributes: map[string]string{
+								"deployment.environment": "ci",
+							},
+						},
+					},
 				},
 			},
 		},
@@ -162,6 +174,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:          1234,
+					Image:         "moby/buildkit:latest",
 					BuildkitdToml: "[worker.oci]\n  enabled = true\n",
 				},
 			},
@@ -208,9 +221,9 @@ func TestBuilder_BuildPod(t *testing.T) {
 						"template.example.com/config": "enabled",
 					},
 					Rootless:      true,
-					DebugLogging:  true,
 					Port:          4567,
 					BuildkitdToml: "[worker.oci]\n  enabled = true\n",
+					Image:         "moby/buildkit:latest",
 					Resources: corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("100m"),
@@ -228,6 +241,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 					ServiceAccountName: "test-sa",
 					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
 						RequireOwner:                  true,
+						PreStopScript:                 true,
 						RestartPolicy:                 corev1.RestartPolicyOnFailure,
 						TerminationGracePeriodSeconds: ptr.To(int64(111)),
 						ActiveDeadlineSeconds:         ptr.To(int64(222)),
@@ -271,6 +285,15 @@ func TestBuilder_BuildPod(t *testing.T) {
 							},
 						},
 					},
+					Observability: v1alpha1.BuildkitTemplateObservability{
+						DebugLogging: true,
+						OTLP: &v1alpha1.BuildkitTemplateOTLPSettings{
+							ServiceName: "custom-buildkit-service",
+							ResourceAttributes: map[string]string{
+								"deployment.environment": "ci",
+							},
+						},
+					},
 				},
 			},
 		},
@@ -301,8 +324,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 					Namespace: "test-ns",
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					Port:          1234,
-					BuildkitdToml: "",
+					Port:  1234,
+					Image: "moby/buildkit:latest",
 					Resources: corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("1000m"),
