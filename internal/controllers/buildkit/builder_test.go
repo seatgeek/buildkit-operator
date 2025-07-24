@@ -61,7 +61,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 					Namespace: "test-ns",
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					Port: 1234,
+					Port:  1234,
+					Image: "moby/buildkit:latest",
 				},
 			},
 		},
@@ -90,7 +91,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 					Namespace: "test-ns",
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					Port: 1234,
+					Port:  1234,
+					Image: "moby/buildkit:latest",
 					PodLabels: map[string]string{
 						"foo": "123",
 					},
@@ -118,6 +120,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:     1234,
+					Image:    "moby/buildkit:rootless",
 					Rootless: true,
 				},
 			},
@@ -140,6 +143,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:         1234,
+					Image:        "moby/buildkit:latest",
 					DebugLogging: true,
 				},
 			},
@@ -162,6 +166,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:          1234,
+					Image:         "moby/buildkit:latest",
 					BuildkitdToml: "[worker.oci]\n  enabled = true\n",
 				},
 			},
@@ -211,6 +216,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 					DebugLogging:  true,
 					Port:          4567,
 					BuildkitdToml: "[worker.oci]\n  enabled = true\n",
+					Image:         "moby/buildkit:latest",
 					Resources: corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("100m"),
@@ -303,6 +309,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:          1234,
 					BuildkitdToml: "",
+					Image:         "moby/buildkit:latest",
 					Resources: corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("1000m"),

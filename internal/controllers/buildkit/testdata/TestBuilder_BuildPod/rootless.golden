@@ -14,7 +14,7 @@ spec:
     - --addr
     - tcp://0.0.0.0:1234
     - --oci-worker-no-process-sandbox
-    image: moby/buildkit:latest
+    image: moby/buildkit:rootless
     livenessProbe:
       failureThreshold: 6
       grpc:

@@ -117,7 +117,7 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 	})
 
 	Context("When creating a BuildkitTemplate with default values", func() {
-		It("should default the port and TerminationGracePeriodSeconds when not specified", func() {
+		It("should default missing fields", func() {
 			buildkitTemplate := &v1alpha1.BuildkitTemplate{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-buildkit-template",
@@ -134,10 +134,11 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 			Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), &created)).To(Succeed())
 
 			Expect(created.Spec.Port).To(Equal(int32(1234)))
+			Expect(created.Spec.Image).To(Equal("moby/buildkit:latest"))
 			Expect(*created.Spec.Lifecycle.TerminationGracePeriodSeconds).To(Equal(int64(900)))
 		})
 
-		It("should not override explicitly set port", func() {
+		It("should not override explicitly set values", func() {
 			customPort := int32(8080)
 			customTerminationGracePeriod := int64(60)
 
@@ -149,6 +150,7 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:          customPort,
 					BuildkitdToml: "",
+					Image:         "moby/buildkit:v0.23.0",
 					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
 						TerminationGracePeriodSeconds: &customTerminationGracePeriod,
 					},
@@ -160,6 +162,7 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 			var created v1alpha1.BuildkitTemplate
 			Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), &created)).To(Succeed())
 			Expect(created.Spec.Port).To(Equal(customPort))
+			Expect(created.Spec.Image).To(Equal("moby/buildkit:v0.23.0"))
 			Expect(*created.Spec.Lifecycle.TerminationGracePeriodSeconds).To(Equal(customTerminationGracePeriod))
 		})
 	})

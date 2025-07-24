@@ -49,6 +49,11 @@ spec:
                 type: array
               debugLogging:
                 type: boolean
+              image:
+                default: moby/buildkit:latest
+                description: Image is the container image to use for the Buildkit
+                  instance
+                type: string
               lifecycle:
                 description: Lifecycle defines the lifecycle settings for the Buildkit
                   pods

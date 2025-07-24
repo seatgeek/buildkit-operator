@@ -45,6 +45,11 @@ type BuildkitTemplateSpec struct {
 	// +kubebuilder:validation:Required
 	BuildkitdToml string `json:"buildkitdToml"`
 
+	// Image is the container image to use for the Buildkit instance
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="moby/buildkit:latest"
+	Image string `json:"image,omitempty"`
+
 	// +kubebuilder:validation:Optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 

@@ -115,6 +115,14 @@ func (b BuildkitTemplateDefaulter) Default(_ context.Context, obj runtime.Object
 		bkt.Spec.Lifecycle.TerminationGracePeriodSeconds = ptr.To(int64(900)) // 15 minutes
 	}
 
+	if bkt.Spec.Image == "" {
+		if bkt.Spec.Rootless {
+			bkt.Spec.Image = "moby/buildkit:rootless"
+		} else {
+			bkt.Spec.Image = "moby/buildkit:latest"
+		}
+	}
+
 	return nil
 }
 

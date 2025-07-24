@@ -60,7 +60,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 			Containers: []corev1.Container{
 				{
 					Name:  buildkitContainerName,
-					Image: "moby/buildkit:latest",
+					Image: template.Spec.Image,
 					VolumeMounts: []corev1.VolumeMount{
 						{
 							Name:      "buildkitd",
