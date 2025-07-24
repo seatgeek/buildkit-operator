@@ -307,9 +307,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 					Namespace: "test-ns",
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					Port:          1234,
-					BuildkitdToml: "",
-					Image:         "moby/buildkit:latest",
+					Port:  1234,
+					Image: "moby/buildkit:latest",
 					Resources: corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("1000m"),

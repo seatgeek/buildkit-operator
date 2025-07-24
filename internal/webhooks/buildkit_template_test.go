@@ -65,6 +65,20 @@ missing closing bracket`,
 
 			Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
 		})
+
+		It("should accept empty TOML", func() {
+			buildkitTemplate := &v1alpha1.BuildkitTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-buildkit-template",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					BuildkitdToml: "",
+				},
+			}
+
+			Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
+		})
 	})
 
 	Context("When updating a BuildkitTemplate resource", func() {
@@ -123,9 +137,7 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 					Name:      "test-buildkit-template",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.BuildkitTemplateSpec{
-					BuildkitdToml: "",
-				},
+				Spec: v1alpha1.BuildkitTemplateSpec{},
 			}
 
 			Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
@@ -148,9 +160,8 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					Port:          customPort,
-					BuildkitdToml: "",
-					Image:         "moby/buildkit:v0.23.0",
+					Port:  customPort,
+					Image: "moby/buildkit:v0.23.0",
 					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
 						TerminationGracePeriodSeconds: &customTerminationGracePeriod,
 					},

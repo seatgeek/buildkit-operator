@@ -31,9 +31,7 @@ var _ = Describe("BuildkitValidator", func() {
 				Name:      someExistingTemplateName,
 				Namespace: namespace,
 			},
-			Spec: v1alpha1.BuildkitTemplateSpec{
-				BuildkitdToml: "",
-			},
+			Spec: v1alpha1.BuildkitTemplateSpec{},
 		}
 		Expect(c.Create(ctx, someExistingTemplate)).To(Succeed())
 
@@ -99,7 +97,6 @@ var _ = Describe("BuildkitValidator", func() {
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					BuildkitdToml: "",
 					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
 						RequireOwner: true,
 					},
@@ -113,7 +110,6 @@ var _ = Describe("BuildkitValidator", func() {
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					BuildkitdToml: "",
 					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
 						RequireOwner: false,
 					},

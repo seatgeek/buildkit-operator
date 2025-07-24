@@ -42,8 +42,8 @@ type BuildkitTemplateSpec struct {
 	Port int32 `json:"port"`
 
 	// BuildkitdToml is the configuration for Buildkit in TOML format
-	// +kubebuilder:validation:Required
-	BuildkitdToml string `json:"buildkitdToml"`
+	// +kubebuilder:validation:Optional
+	BuildkitdToml string `json:"buildkitdToml,omitempty"`
 
 	// Image is the container image to use for the Buildkit instance
 	// +kubebuilder:validation:Optional
