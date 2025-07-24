@@ -48,7 +48,7 @@ spec:
         - --leader-election-id={{ include "buildkit-operator.fullname" . }}-election
         {{- end }}
         command:
-        - /manager
+        - /operator
         {{- with .Values.operator.env }}
         env:
         {{- toYaml . | nindent 8 }}
