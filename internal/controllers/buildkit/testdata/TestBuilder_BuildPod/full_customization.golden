@@ -1,5 +1,6 @@
 metadata:
   annotations:
+    container.apparmor.security.beta.kubernetes.io/buildkit: unconfined
     example.com/custom: value
     template.example.com/config: enabled
   creationTimestamp: null
@@ -10,27 +11,42 @@ metadata:
     app.kubernetes.io/version: v1.0.0
   namespace: test-ns
 spec:
+  activeDeadlineSeconds: 222
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: custom-buildkit
+        topologyKey: kubernetes.io/hostname
   containers:
   - args:
     - --addr
-    - tcp://0.0.0.0:8080
-    image: custom/buildkit:v1.2.3
+    - unix:///run/user/1000/buildkit/buildkitd.sock
+    - --addr
+    - tcp://0.0.0.0:4567
+    - --oci-worker-no-process-sandbox
+    - --debug
+    command:
+    - rootlesskit
+    - buildkitd
+    image: moby/buildkit:latest
     livenessProbe:
       failureThreshold: 6
       grpc:
-        port: 8080
+        port: 4567
         service: null
       initialDelaySeconds: 5
       periodSeconds: 30
     name: buildkit
     ports:
-    - containerPort: 8080
+    - containerPort: 4567
       name: tcp
       protocol: TCP
     readinessProbe:
       failureThreshold: 2
       grpc:
-        port: 8080
+        port: 4567
         service: null
       initialDelaySeconds: 5
       periodSeconds: 15
@@ -41,6 +57,11 @@ spec:
       requests:
         cpu: 200m
         memory: 256Mi
+    securityContext:
+      runAsGroup: 1000
+      runAsUser: 1000
+      seccompProfile:
+        type: Unconfined
     volumeMounts:
     - mountPath: /home/user/.local/share/buildkit
       name: buildkitd
@@ -48,15 +69,21 @@ spec:
       name: config
   nodeSelector:
     kubernetes.io/arch: amd64
-  restartPolicy: Never
-  securityContext:
-    runAsNonRoot: true
-    runAsUser: 1000
-  terminationGracePeriodSeconds: 900
+  priorityClassName: test-pc
+  restartPolicy: OnFailure
+  serviceAccountName: test-sa
+  terminationGracePeriodSeconds: 111
   tolerations:
   - effect: NoSchedule
     key: node-role.kubernetes.io/master
     operator: Exists
+  topologySpreadConstraints:
+  - labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: custom-buildkit
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
   volumes:
   - emptyDir: {}
     name: buildkitd

@@ -10,11 +10,11 @@ import (
 	"fmt"
 
 	"github.com/BurntSushi/toml"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -50,15 +50,6 @@ func (v *BuildkitTemplateValidator) validate(obj runtime.Object) (admission.Warn
 			field.NewPath("spec", "port"),
 			bkt.Spec.Port,
 			"spec.port must be between 1 and 65535",
-		))
-	}
-
-	// Validate the PodTemplate
-	if bkt.Spec.PodTemplate.Name != "" {
-		errorList = append(errorList, field.Invalid(
-			field.NewPath("spec", "podTemplate", "name"),
-			bkt.Spec.PodTemplate.Name,
-			"spec.podTemplate.name must not be set, as pod names are automatically generated",
 		))
 	}
 
@@ -120,12 +111,8 @@ func (b BuildkitTemplateDefaulter) Default(_ context.Context, obj runtime.Object
 		bkt.Spec.Port = 1234
 	}
 
-	if len(bkt.Spec.PodTemplate.Spec.Containers) == 0 {
-		bkt.Spec.PodTemplate.Spec.Containers = make([]corev1.Container, 1)
-	}
-
-	if bkt.Spec.PodTemplate.Spec.Containers[0].Image == "" {
-		bkt.Spec.PodTemplate.Spec.Containers[0].Image = "moby/buildkit:latest"
+	if bkt.Spec.Lifecycle.TerminationGracePeriodSeconds == nil {
+		bkt.Spec.Lifecycle.TerminationGracePeriodSeconds = ptr.To(int64(900)) // 15 minutes
 	}
 
 	return nil

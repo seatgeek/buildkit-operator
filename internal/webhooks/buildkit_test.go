@@ -32,11 +32,6 @@ var _ = Describe("BuildkitValidator", func() {
 				Namespace: namespace,
 			},
 			Spec: v1alpha1.BuildkitTemplateSpec{
-				PodTemplate: corev1.PodTemplateSpec{
-					Spec: corev1.PodSpec{
-						Containers: []corev1.Container{},
-					},
-				},
 				BuildkitdToml: "",
 			},
 		}
@@ -104,13 +99,10 @@ var _ = Describe("BuildkitValidator", func() {
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					PodTemplate: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{},
-						},
-					},
 					BuildkitdToml: "",
-					RequireOwner:  true,
+					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
+						RequireOwner: true,
+					},
 				},
 			}
 			Expect(c.Create(ctx, templateWithRequireOwner)).To(Succeed())
@@ -121,13 +113,10 @@ var _ = Describe("BuildkitValidator", func() {
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					PodTemplate: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{},
-						},
-					},
 					BuildkitdToml: "",
-					RequireOwner:  false,
+					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
+						RequireOwner: false,
+					},
 				},
 			}
 			Expect(c.Create(ctx, templateWithoutRequireOwner)).To(Succeed())

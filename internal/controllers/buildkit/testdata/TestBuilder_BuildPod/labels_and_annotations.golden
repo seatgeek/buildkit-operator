@@ -1,12 +1,19 @@
 metadata:
+  annotations:
+    bar: "456"
+    foo: foo
   creationTimestamp: null
   generateName: test-buildkit-
   labels:
     app.kubernetes.io/name: buildkit
+    bar: bar
+    foo: "123"
   namespace: test-ns
 spec:
   containers:
   - args:
+    - --addr
+    - unix:///run/buildkit/buildkitd.sock
     - --addr
     - tcp://0.0.0.0:1234
     image: moby/buildkit:latest
@@ -29,24 +36,13 @@ spec:
         service: null
       initialDelaySeconds: 5
       periodSeconds: 15
-    resources:
-      limits:
-        cpu: "1"
-        memory: 1Gi
-      requests:
-        cpu: 100m
-        memory: 128Mi
+    resources: {}
+    securityContext:
+      privileged: true
     volumeMounts:
-    - mountPath: /home/user/.local/share/buildkit
+    - mountPath: /var/lib/buildkit
       name: buildkitd
-    - mountPath: /home/user/.config/buildkit
-      name: config
-  restartPolicy: Never
-  terminationGracePeriodSeconds: 900
   volumes:
   - emptyDir: {}
     name: buildkitd
-  - configMap:
-      name: buildkit-test-template-toml
-    name: config
 status: {}

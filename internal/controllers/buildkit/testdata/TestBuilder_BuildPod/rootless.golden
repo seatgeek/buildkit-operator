@@ -1,0 +1,49 @@
+metadata:
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/buildkit: unconfined
+  creationTimestamp: null
+  generateName: test-buildkit-
+  labels:
+    app.kubernetes.io/name: buildkit
+  namespace: test-ns
+spec:
+  containers:
+  - args:
+    - --addr
+    - unix:///run/user/1000/buildkit/buildkitd.sock
+    - --addr
+    - tcp://0.0.0.0:1234
+    - --oci-worker-no-process-sandbox
+    image: moby/buildkit:latest
+    livenessProbe:
+      failureThreshold: 6
+      grpc:
+        port: 1234
+        service: null
+      initialDelaySeconds: 5
+      periodSeconds: 30
+    name: buildkit
+    ports:
+    - containerPort: 1234
+      name: tcp
+      protocol: TCP
+    readinessProbe:
+      failureThreshold: 2
+      grpc:
+        port: 1234
+        service: null
+      initialDelaySeconds: 5
+      periodSeconds: 15
+    resources: {}
+    securityContext:
+      runAsGroup: 1000
+      runAsUser: 1000
+      seccompProfile:
+        type: Unconfined
+    volumeMounts:
+    - mountPath: /home/user/.local/share/buildkit
+      name: buildkitd
+  volumes:
+  - emptyDir: {}
+    name: buildkitd
+status: {}

@@ -1,0 +1,2 @@
+ignore:
+  - "api/**/zz_generated.deepcopy.go"

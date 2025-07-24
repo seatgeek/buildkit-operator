@@ -25,23 +25,76 @@ type BuildkitTemplate struct {
 }
 
 type BuildkitTemplateSpec struct {
-	// PodTemplate is the Pod template used to create the Buildkit instances
-	// +kubebuilder:validation:Required
-	PodTemplate corev1.PodTemplateSpec `json:"template"`
+	// +kubebuilder:validation:Optional
+	PodLabels map[string]string `json:"podLabels,omitempty"`
+	// +kubebuilder:validation:Optional
+	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
 
-	// BuildkitdToml is the configuration for Buildkit in TOML format
-	// +kubebuilder:validation:Required
-	BuildkitdToml string `json:"buildkitdToml"`
+	// +kubebuilder:validation:Optional
+	Rootless bool `json:"rootless,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	DebugLogging bool `json:"debugLogging,omitempty"`
 
 	// Port is the TCP port number on which the Buildkit instance will listen; default is 1234
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=1234
 	Port int32 `json:"port"`
 
+	// BuildkitdToml is the configuration for Buildkit in TOML format
+	// +kubebuilder:validation:Required
+	BuildkitdToml string `json:"buildkitdToml"`
+
+	// +kubebuilder:validation:Optional
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	Command []string `json:"command,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+
+	// Scheduling defines the scheduling constraints for the Buildkit pods
+	// +kubebuilder:validation:Optional
+	Scheduling BuildkitTemplatePodScheduling `json:"scheduling,omitempty"`
+
+	// Lifecycle defines the lifecycle settings for the Buildkit pods
+	// +kubebuilder:validation:Optional
+	Lifecycle BuildkitTemplatePodLifecycle `json:"lifecycle,omitempty"`
+}
+
+type BuildkitTemplatePodScheduling struct {
+	// +kubebuilder:validation:Optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	PriorityClassName string `json:"priorityClassName,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+}
+
+type BuildkitTemplatePodLifecycle struct {
 	// RequireOwner indicates whether the Buildkit instance must be created with an owner reference
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=false
 	RequireOwner bool `json:"requireOwner,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	RestartPolicy corev1.RestartPolicy `json:"restartPolicy,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=900
+	TerminationGracePeriodSeconds *int64 `json:"terminationGracePeriodSeconds,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
 }
 
 type BuildkitTemplateStatus struct {
