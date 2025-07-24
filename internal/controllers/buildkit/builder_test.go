@@ -45,7 +45,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 			wantErr:  "not found",
 		},
 		{
-			name: "vanilla happy path",
+			name: "simple example",
 			buildkit: &v1alpha1.Buildkit{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-buildkit",
@@ -62,25 +62,40 @@ func TestBuilder_BuildPod(t *testing.T) {
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port: 1234,
-					PodTemplate: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name:  "buildkit",
-									Image: "moby/buildkit:latest",
-									Resources: corev1.ResourceRequirements{
-										Requests: corev1.ResourceList{
-											corev1.ResourceCPU:    resource.MustParse("100m"),
-											corev1.ResourceMemory: resource.MustParse("128Mi"),
-										},
-										Limits: corev1.ResourceList{
-											corev1.ResourceCPU:    resource.MustParse("1000m"),
-											corev1.ResourceMemory: resource.MustParse("1Gi"),
-										},
-									},
-								},
-							},
-						},
+				},
+			},
+		},
+		{
+			name: "labels and annotations",
+			buildkit: &v1alpha1.Buildkit{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-buildkit",
+					Namespace: "test-ns",
+				},
+				Spec: v1alpha1.BuildkitSpec{
+					Template: "test-template",
+					Labels: map[string]string{
+						"foo": "foo",
+						"bar": "bar",
+					},
+					Annotations: map[string]string{
+						"foo": "foo",
+						"bar": "bar",
+					},
+				},
+			},
+			template: &v1alpha1.BuildkitTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-template",
+					Namespace: "test-ns",
+				},
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port: 1234,
+					PodLabels: map[string]string{
+						"foo": "123",
+					},
+					PodAnnotations: map[string]string{
+						"bar": "456",
 					},
 				},
 			},
@@ -130,7 +145,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 			},
 		},
 		{
-			name: "with config map",
+			name: "with buildkitd.toml",
 			buildkit: &v1alpha1.Buildkit{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-buildkit",
@@ -148,26 +163,6 @@ func TestBuilder_BuildPod(t *testing.T) {
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:          1234,
 					BuildkitdToml: "[worker.oci]\n  enabled = true\n",
-					PodTemplate: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name:  "buildkit",
-									Image: "moby/buildkit:latest",
-									Resources: corev1.ResourceRequirements{
-										Requests: corev1.ResourceList{
-											corev1.ResourceCPU:    resource.MustParse("100m"),
-											corev1.ResourceMemory: resource.MustParse("128Mi"),
-										},
-										Limits: corev1.ResourceList{
-											corev1.ResourceCPU:    resource.MustParse("1000m"),
-											corev1.ResourceMemory: resource.MustParse("1Gi"),
-										},
-									},
-								},
-							},
-						},
-					},
 				},
 			},
 		},
@@ -205,48 +200,74 @@ func TestBuilder_BuildPod(t *testing.T) {
 					Namespace: "test-ns",
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					Port:          8080,
+					PodLabels: map[string]string{
+						"app.kubernetes.io/name":      "template-buildkit", // Will be overridden
+						"app.kubernetes.io/component": "builder",
+					},
+					PodAnnotations: map[string]string{
+						"template.example.com/config": "enabled",
+					},
+					Rootless:      true,
+					DebugLogging:  true,
+					Port:          4567,
 					BuildkitdToml: "[worker.oci]\n  enabled = true\n",
-					PodTemplate: corev1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{
-								"app.kubernetes.io/name":      "template-buildkit", // Will be overridden
-								"app.kubernetes.io/component": "builder",
-							},
-							Annotations: map[string]string{
-								"template.example.com/config": "enabled",
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("100m"),
+							corev1.ResourceMemory: resource.MustParse("128Mi"),
+						},
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("1000m"),
+							corev1.ResourceMemory: resource.MustParse("1Gi"),
+						},
+					},
+					Command: []string{
+						"rootlesskit",
+						"buildkitd",
+					},
+					ServiceAccountName: "test-sa",
+					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
+						RequireOwner:                  true,
+						RestartPolicy:                 corev1.RestartPolicyOnFailure,
+						TerminationGracePeriodSeconds: ptr.To(int64(111)),
+						ActiveDeadlineSeconds:         ptr.To(int64(222)),
+					},
+					Scheduling: v1alpha1.BuildkitTemplatePodScheduling{
+						NodeSelector: map[string]string{
+							"kubernetes.io/arch": "amd64",
+						},
+						Tolerations: []corev1.Toleration{
+							{
+								Key:      "node-role.kubernetes.io/master",
+								Operator: corev1.TolerationOpExists,
+								Effect:   corev1.TaintEffectNoSchedule,
 							},
 						},
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name:  "buildkit",
-									Image: "custom/buildkit:v1.2.3",
-									Resources: corev1.ResourceRequirements{
-										Requests: corev1.ResourceList{
-											corev1.ResourceCPU:    resource.MustParse("100m"),
-											corev1.ResourceMemory: resource.MustParse("128Mi"),
+						Affinity: &corev1.Affinity{
+							PodAntiAffinity: &corev1.PodAntiAffinity{
+								RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
+									{
+										LabelSelector: &metav1.LabelSelector{
+											MatchLabels: map[string]string{
+												"app.kubernetes.io/name": "custom-buildkit",
+											},
 										},
-										Limits: corev1.ResourceList{
-											corev1.ResourceCPU:    resource.MustParse("1000m"),
-											corev1.ResourceMemory: resource.MustParse("1Gi"),
-										},
+										TopologyKey: "kubernetes.io/hostname",
 									},
 								},
 							},
-							NodeSelector: map[string]string{
-								"kubernetes.io/arch": "amd64",
-							},
-							Tolerations: []corev1.Toleration{
-								{
-									Key:      "node-role.kubernetes.io/master",
-									Operator: corev1.TolerationOpExists,
-									Effect:   corev1.TaintEffectNoSchedule,
+						},
+						PriorityClassName: "test-pc",
+						TopologySpreadConstraints: []corev1.TopologySpreadConstraint{
+							{
+								MaxSkew:           1,
+								TopologyKey:       "kubernetes.io/hostname",
+								WhenUnsatisfiable: corev1.DoNotSchedule,
+								LabelSelector: &metav1.LabelSelector{
+									MatchLabels: map[string]string{
+										"app.kubernetes.io/name": "custom-buildkit",
+									},
 								},
-							},
-							SecurityContext: &corev1.PodSecurityContext{
-								RunAsNonRoot: ptr.To(true),
-								RunAsUser:    ptr.To(int64(1000)),
 							},
 						},
 					},
@@ -254,7 +275,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 			},
 		},
 		{
-			name: "resource requirements only",
+			name: "requested resources exceed template resources",
 			buildkit: &v1alpha1.Buildkit{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-buildkit",
@@ -264,12 +285,12 @@ func TestBuilder_BuildPod(t *testing.T) {
 					Template: "test-template",
 					Resources: &corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("500m"),
-							corev1.ResourceMemory: resource.MustParse("512Mi"),
+							corev1.ResourceCPU:    resource.MustParse("2000m"),
+							corev1.ResourceMemory: resource.MustParse("4Gi"),
 						},
 						Limits: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("800m"),
-							corev1.ResourceMemory: resource.MustParse("800Mi"),
+							corev1.ResourceCPU:    resource.MustParse("4000m"),
+							corev1.ResourceMemory: resource.MustParse("8Gi"),
 						},
 					},
 				},
@@ -282,24 +303,14 @@ func TestBuilder_BuildPod(t *testing.T) {
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:          1234,
 					BuildkitdToml: "",
-					PodTemplate: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name:  "buildkit",
-									Image: "moby/buildkit:latest",
-									Resources: corev1.ResourceRequirements{
-										Requests: corev1.ResourceList{
-											corev1.ResourceCPU:    resource.MustParse("100m"),
-											corev1.ResourceMemory: resource.MustParse("128Mi"),
-										},
-										Limits: corev1.ResourceList{
-											corev1.ResourceCPU:    resource.MustParse("1000m"),
-											corev1.ResourceMemory: resource.MustParse("1Gi"),
-										},
-									},
-								},
-							},
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("1000m"),
+							corev1.ResourceMemory: resource.MustParse("2Gi"),
+						},
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("3000m"),
+							corev1.ResourceMemory: resource.MustParse("6Gi"),
 						},
 					},
 				},

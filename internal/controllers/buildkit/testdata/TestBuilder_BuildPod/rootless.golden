@@ -1,6 +1,6 @@
 metadata:
   annotations:
-    container.apparmor.security.beta.kubernetes.io/buildkit: "true"
+    container.apparmor.security.beta.kubernetes.io/buildkit: unconfined
   creationTimestamp: null
   generateName: test-buildkit-
   labels:
@@ -43,8 +43,6 @@ spec:
     volumeMounts:
     - mountPath: /home/user/.local/share/buildkit
       name: buildkitd
-  restartPolicy: Never
-  terminationGracePeriodSeconds: 900
   volumes:
   - emptyDir: {}
     name: buildkitd

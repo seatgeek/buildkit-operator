@@ -31,26 +31,13 @@ spec:
         service: null
       initialDelaySeconds: 5
       periodSeconds: 15
-    resources:
-      limits:
-        cpu: "1"
-        memory: 1Gi
-      requests:
-        cpu: 100m
-        memory: 128Mi
+    resources: {}
     securityContext:
       privileged: true
     volumeMounts:
     - mountPath: /var/lib/buildkit
       name: buildkitd
-    - mountPath: /etc/buildkit
-      name: config
-  restartPolicy: Never
-  terminationGracePeriodSeconds: 900
   volumes:
   - emptyDir: {}
     name: buildkitd
-  - configMap:
-      name: buildkit-test-template-toml
-    name: config
 status: {}

@@ -36,16 +36,6 @@ var _ = Describe("Buildkit Reconciler", func() {
 				Namespace: namespace,
 			},
 			Spec: v1alpha1.BuildkitTemplateSpec{
-				PodTemplate: corev1.PodTemplateSpec{
-					Spec: corev1.PodSpec{
-						Containers: []corev1.Container{
-							{
-								Name:  "buildkit",
-								Image: "moby/buildkit:latest",
-							},
-						},
-					},
-				},
 				BuildkitdToml: "",
 				Port:          1234,
 			},

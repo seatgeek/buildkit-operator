@@ -33,18 +33,16 @@ spec:
       periodSeconds: 15
     resources:
       limits:
-        cpu: "1"
-        memory: 1Gi
+        cpu: "3"
+        memory: 6Gi
       requests:
-        cpu: 100m
-        memory: 128Mi
+        cpu: "2"
+        memory: 4Gi
     securityContext:
       privileged: true
     volumeMounts:
     - mountPath: /var/lib/buildkit
       name: buildkitd
-  restartPolicy: Never
-  terminationGracePeriodSeconds: 900
   volumes:
   - emptyDir: {}
     name: buildkitd

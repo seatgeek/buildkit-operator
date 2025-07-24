@@ -43,10 +43,17 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 	const buildkitContainerName = "buildkit"
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Annotations: b.buildkit.Spec.Annotations,
+			GenerateName: b.buildkit.Name + "-",
+			Name:         "",
+			Namespace:    b.buildkit.Namespace,
+			Annotations: merge.Maps(
+				b.buildkit.Spec.Annotations,
+				template.Spec.PodAnnotations,
+			),
 			Labels: merge.Maps(
 				map[string]string{"app.kubernetes.io/name": "buildkit"},
 				b.buildkit.Spec.Labels,
+				template.Spec.PodLabels,
 			),
 		},
 		Spec: corev1.PodSpec{
@@ -60,6 +67,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 							MountPath: "/var/lib/buildkit",
 						},
 					},
+					Command: template.Spec.Command,
 					Args: []string{
 						"--addr",
 						"unix:///run/buildkit/buildkitd.sock",
@@ -73,6 +81,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 							Protocol:      "TCP",
 						},
 					},
+					Resources: resources.Merge(b.buildkit.Spec.Resources, template.Spec.Resources),
 					ReadinessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
 							GRPC: &corev1.GRPCAction{
@@ -106,8 +115,15 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 					},
 				},
 			},
-			RestartPolicy:                 corev1.RestartPolicyNever,
-			TerminationGracePeriodSeconds: ptr.To(int64(900)), // 15 minutes
+			ServiceAccountName:            template.Spec.ServiceAccountName,
+			NodeSelector:                  template.Spec.Scheduling.NodeSelector,
+			Tolerations:                   template.Spec.Scheduling.Tolerations,
+			Affinity:                      template.Spec.Scheduling.Affinity,
+			TopologySpreadConstraints:     template.Spec.Scheduling.TopologySpreadConstraints,
+			PriorityClassName:             template.Spec.Scheduling.PriorityClassName,
+			RestartPolicy:                 template.Spec.Lifecycle.RestartPolicy,
+			TerminationGracePeriodSeconds: template.Spec.Lifecycle.TerminationGracePeriodSeconds,
+			ActiveDeadlineSeconds:         template.Spec.Lifecycle.ActiveDeadlineSeconds,
 		},
 	}
 
@@ -116,7 +132,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 
 	if template.Spec.Rootless {
 		pod.Annotations = merge.Maps(pod.Annotations, map[string]string{
-			"container.apparmor.security.beta.kubernetes.io/" + buildkitContainerName: "true",
+			"container.apparmor.security.beta.kubernetes.io/" + buildkitContainerName: "unconfined",
 		})
 		container.VolumeMounts[0].MountPath = "/home/user/.local/share/buildkit"
 		container.Args[1] = "unix:///run/user/1000/buildkit/buildkitd.sock"
@@ -158,31 +174,5 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 		})
 	}
 
-	err := merge.Objects(
-		// Start with the default, fully-overrideable configs first
-		pod,
-		// Then apply the user-defined pod template overrides from the BuildkitTemplate
-		corev1.Pod{
-			ObjectMeta: template.Spec.PodTemplate.ObjectMeta,
-			Spec:       template.Spec.PodTemplate.Spec,
-		},
-		// Then apply required metadata and resources
-		corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: b.buildkit.Name + "-",
-				Name:         "",
-				Namespace:    b.buildkit.Namespace,
-			},
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{
-					{
-						Name:      buildkitContainerName,
-						Resources: resources.Merge(b.buildkit.Spec.Resources, container.Resources),
-					},
-				},
-			},
-		},
-	)
-
-	return pod, err
+	return pod, nil
 }

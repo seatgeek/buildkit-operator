@@ -51,7 +51,7 @@ func (v *BuildkitValidator) validate(ctx context.Context, obj runtime.Object) (a
 			return nil, apierrors.NewInternalError(fmt.Errorf("failed to get BuildkitTemplate '%s' in namespace '%s': %w", bk.Spec.Template, bk.Namespace, err))
 		}
 		errorList = append(errorList, field.NotFound(field.NewPath("spec", "template"), bk.Spec.Template))
-	} else if template.Spec.RequireOwner && len(bk.GetOwnerReferences()) == 0 {
+	} else if template.Spec.Lifecycle.RequireOwner && len(bk.GetOwnerReferences()) == 0 {
 		errorList = append(errorList, field.Required(
 			field.NewPath("metadata", "ownerReferences"),
 			fmt.Sprintf("BuildkitTemplate '%s' requires owner references but none are present", bk.Spec.Template),

@@ -22,7 +22,6 @@ generate: controller-gen yq
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="{./api/..., ./internal/webhooks/...}" output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=manager-role paths="{./internal/controllers/...}"
 	$(CONTROLLER_GEN) object paths="{./api/...}"
-	./hack/patch-crds.sh
 	cp config/webhook/manifests.yaml kind/webhook/manifests.yaml
 	rm charts/buildkit-operator/crds/*
 	cp config/crd/bases/*.yaml charts/buildkit-operator/crds/
