@@ -25,6 +25,7 @@ generate: controller-gen yq
 	cp config/webhook/manifests.yaml kind/webhook/manifests.yaml
 	rm charts/buildkit-operator/crds/*
 	cp config/crd/bases/*.yaml charts/buildkit-operator/crds/
+	curl -sL https://raw.githubusercontent.com/seatgeek/buildkit-prestop-script/$(BUILDKIT_PRESTOP_VERSION)/buildkit-prestop.sh -o internal/prestop/buildkit-prestop.sh
 
 .PHONY: validate-helm-templates
 validate-helm-templates: generate yq
@@ -207,6 +208,8 @@ GOCOVER_COBERTURA = $(LOCALBIN)/gocover-cobertura-$(GOCOVER_COBERTURA_VERSION)
 # renovate: datasource=go depName=mikefarah/yq/v3
 YQ_VERSION ?= 3.3.0
 YQ ?= $(LOCALBIN)/yq # no version suffix, as we need to reference this outside of this Makefile
+# renovate: datasource=github-releases depName=seatgeek/buildkit-prestop-script
+BUILDKIT_PRESTOP_VERSION ?= v1.2.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE)

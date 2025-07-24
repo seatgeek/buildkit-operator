@@ -150,7 +150,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 		container.Args = append(container.Args, "--debug")
 	}
 
-	// Mount config map if needed
+	// Mount buildkitd.toml config map if needed
 	if configMap := buildkit_template.NewBuilder(&template).ConfigMap(); configMap != nil {
 		pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
 			Name: "config",
@@ -172,6 +172,35 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 			Name:      "config",
 			MountPath: mountPath,
 		})
+	}
+
+	// Configure pre-stop script if needed
+	if configMap := buildkit_template.NewBuilder(&template).ScriptsConfigMap(); configMap != nil {
+		pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
+			Name: "scripts",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: configMap.Name,
+					},
+					DefaultMode: ptr.To(int32(0o755)),
+				},
+			},
+		})
+
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+			Name:      "scripts",
+			MountPath: "/usr/local/bin/buildkit-prestop.sh",
+			SubPath:   buildkit_template.PreStopScriptName,
+		})
+
+		container.Lifecycle = &corev1.Lifecycle{
+			PreStop: &corev1.LifecycleHandler{
+				Exec: &corev1.ExecAction{
+					Command: []string{"/bin/sh", "/usr/local/bin/buildkit-prestop.sh"},
+				},
+			},
+		}
 	}
 
 	return pod, nil

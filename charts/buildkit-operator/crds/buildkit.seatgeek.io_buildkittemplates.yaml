@@ -61,6 +61,8 @@ spec:
                   activeDeadlineSeconds:
                     format: int64
                     type: integer
+                  preStopScript:
+                    type: boolean
                   requireOwner:
                     default: false
                     description: RequireOwner indicates whether the Buildkit instance

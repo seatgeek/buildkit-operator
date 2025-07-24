@@ -234,6 +234,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 					ServiceAccountName: "test-sa",
 					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
 						RequireOwner:                  true,
+						PreStopScript:                 true,
 						RestartPolicy:                 corev1.RestartPolicyOnFailure,
 						TerminationGracePeriodSeconds: ptr.To(int64(111)),
 						ActiveDeadlineSeconds:         ptr.To(int64(222)),

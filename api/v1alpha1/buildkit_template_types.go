@@ -100,6 +100,9 @@ type BuildkitTemplatePodLifecycle struct {
 
 	// +kubebuilder:validation:Optional
 	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	PreStopScript bool `json:"preStopScript,omitempty"`
 }
 
 type BuildkitTemplateStatus struct {

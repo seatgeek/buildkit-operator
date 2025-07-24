@@ -31,6 +31,12 @@ spec:
     - rootlesskit
     - buildkitd
     image: moby/buildkit:latest
+    lifecycle:
+      preStop:
+        exec:
+          command:
+          - /bin/sh
+          - /usr/local/bin/buildkit-prestop.sh
     livenessProbe:
       failureThreshold: 6
       grpc:
@@ -67,6 +73,9 @@ spec:
       name: buildkitd
     - mountPath: /home/user/.config/buildkit
       name: config
+    - mountPath: /usr/local/bin/buildkit-prestop.sh
+      name: scripts
+      subPath: buildkit-prestop.sh
   nodeSelector:
     kubernetes.io/arch: amd64
   priorityClassName: test-pc
@@ -90,4 +99,8 @@ spec:
   - configMap:
       name: buildkit-test-template-toml
     name: config
+  - configMap:
+      defaultMode: 493
+      name: buildkit-test-template-scripts
+    name: scripts
 status: {}
