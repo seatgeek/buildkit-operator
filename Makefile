@@ -1,7 +1,7 @@
 REPORTS_DIR=build/reports
 
 .PHONY: all
-all: clean generate lint test build
+all: clean generate lint test validate-helm-templates build
 
 .PHONY: clean
 clean:
@@ -18,12 +18,18 @@ lint-fix: golangci-lint goimports-reviser
 	go mod tidy
 
 .PHONY: generate
-generate: controller-gen
+generate: controller-gen yq
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="{./api/..., ./internal/webhooks/...}" output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=manager-role paths="{./internal/controllers/...}"
 	$(CONTROLLER_GEN) object paths="{./api/...}"
 	./hack/patch-crds.sh
 	cp config/webhook/manifests.yaml kind/webhook/manifests.yaml
+	rm charts/buildkit-operator/crds/*
+	cp config/crd/bases/*.yaml charts/buildkit-operator/crds/
+
+.PHONY: validate-helm-templates
+validate-helm-templates: generate yq
+	./hack/validate-helm-templates.sh
 
 .PHONY: test
 test: generate envtest
@@ -52,6 +58,10 @@ report-coverage: gocover-cobertura
 .PHONY: build
 build: generate
 	go build cmd/operator/main.go
+
+.PHONY: build-docker
+build-docker: generate
+	docker build -t buildkit-operator:latest -f Dockerfile .
 
 .PHONY: start_webhook_reverse_proxy
 start_webhook_reverse_proxy:

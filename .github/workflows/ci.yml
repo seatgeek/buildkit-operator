@@ -51,13 +51,127 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./build/reports/coverage.out
 
-  build-manifests:
+  validate-manifests:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go
+      - uses: mikefarah/yq@v4.44.1
+      - uses: azure/setup-helm@v4
+        with:
+          version: '3.14.0'
+
+      - name: Generate manifests
+        run: make generate
+
+      - name: Check if committed manifests are up-to-date
+        run: |
+          git diff --exit-code || (echo "Manifests are out of date. Please run 'make generate' and commit the changes." && exit 1)
+
+      - name: Validate Helm templates match generated sources
+        run: ./hack/validate-helm-templates.sh
+
+  build-image:
+    needs: [go-mod-tidy, lint, test, validate-manifests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go
 
-      - run: make generate
-      - run: |
-          git diff --exit-code || (echo "Manifests are out of date. Please run 'make generate' and commit the changes." && exit 1)
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build binaries for multiple architectures
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o operator-amd64 cmd/operator/main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -o operator-arm64 cmd/operator/main.go
+          chmod +x operator-amd64 operator-arm64
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=Buildkit Operator
+            org.opencontainers.image.description=Kubernetes operator for managing BuildKit instances
+            org.opencontainers.image.vendor=SeatGeek
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          target: final_prebuilt
+
+  publish-chart:
+    needs: [build-image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: '3.14.0'
+
+      - name: Package and publish Helm chart
+        run: |
+          # Set chart version based on the context
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # For tagged releases, use the tag as version
+            CHART_VERSION="${{ github.ref_name }}"
+            # Remove 'v' prefix if present
+            CHART_VERSION="${CHART_VERSION#v}"
+            APP_VERSION="${{ github.ref_name }}"
+          elif [[ "${{ github.ref_name }}" == "main" ]]; then
+            # For main branch, use a development version with commit SHA
+            CHART_VERSION="0.0.0-main-${GITHUB_SHA:0:8}"
+            APP_VERSION="main"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # For PRs, use pr- prefix
+            CHART_VERSION="0.0.0-pr-${{ github.event.number }}"
+            APP_VERSION="pr-${{ github.event.number }}"
+          else
+            # Fallback for other cases
+            CHART_VERSION="0.0.0-${GITHUB_SHA:0:8}"
+            APP_VERSION="${GITHUB_SHA:0:8}"
+          fi
+
+          # Update Chart.yaml with calculated versions
+          sed -i "s/^version:.*/version: ${CHART_VERSION}/" charts/buildkit-operator/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${APP_VERSION}\"/" charts/buildkit-operator/Chart.yaml
+
+          # Package the chart
+          helm package charts/buildkit-operator --destination ./charts/
+
+          # Login to GHCR for Helm
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
+
+          # Push to GHCR
+          helm push ./charts/buildkit-operator-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts

@@ -1,0 +1,123 @@
+# Default values for buildkit-operator.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/seatgeek/buildkit-operator
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+  # Digest support for immutable deployments (takes precedence over tag)
+  # Example: sha256:abcd1234...
+  digest: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+  # Annotations to apply to the service account
+  annotations: {}
+
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - "ALL"
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+# Operator configuration
+operator:
+  # Enable leader election for high availability
+  leaderElection: true
+
+  # Additional labels to apply to the operator pod template
+  podLabels: {}
+
+  # Additional annotations to apply to the operator pod template
+  podAnnotations: {}
+
+  # Additional environment variables for the operator
+  env: []
+
+  # Resource limits and requests for the operator
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "10m"
+    limits:
+      memory: "128Mi"
+      cpu: "500m"
+
+  # Probe configuration
+  probes:
+    liveness:
+      initialDelaySeconds: 15
+      periodSeconds: 20
+    readiness:
+      initialDelaySeconds: 5
+      periodSeconds: 10
+
+  # Node selector for pod assignment
+  nodeSelector: {}
+
+  # Tolerations for pod assignment
+  tolerations: []
+
+  # Affinity for pod assignment
+  affinity: {}
+
+  # Topology spread constraints for operator pods
+  topologySpreadConstraints: []
+
+  # Priority class for the operator pod
+  priorityClassName: ""
+
+  # Metrics configuration
+  metrics:
+    # Enable metrics endpoint
+    enabled: true
+    # Metrics server port
+    port: 8080
+
+# RBAC configuration
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+
+# CRDs configuration
+crds:
+  # Whether to install CRDs as part of this chart
+  install: true
+
+# Webhook configuration
+webhook:
+  # Enable webhook
+  enabled: true
+  # Webhook failure policy (Fail or Ignore)
+  failurePolicy: Fail
+  # Webhook timeout in seconds
+  timeoutSeconds: 30
+
+  # Service configuration for webhook
+  service:
+    type: ClusterIP
+    port: 443
+
+  # Use cert-manager for certificate generation
+  certManager:
+    enabled: true

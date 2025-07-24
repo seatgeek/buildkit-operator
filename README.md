@@ -85,6 +85,70 @@ status:
 
 Use the `.status.endpoint` field to connect to the BuildKit instance. When you're done, delete the `Buildkit` resource and the associated pod will be cleaned up automatically.
 
+## Installation
+
+### Helm Chart (Recommended)
+
+The easiest way to install the buildkit-operator is using the Helm chart:
+
+```bash
+# Install the latest stable release
+helm install buildkit-operator \
+  oci://ghcr.io/seatgeek/charts/buildkit-operator \
+  --namespace buildkit-system \
+  --create-namespace
+```
+
+#### Installation Options
+
+**Install latest from main branch (bleeding edge):**
+```bash
+# Note: Chart versions for main branch use format 0.0.0-main-<commit-sha>
+# You can find the exact version in GitHub Actions or use --devel flag
+helm install buildkit-operator \
+  oci://ghcr.io/seatgeek/charts/buildkit-operator \
+  --namespace buildkit-system \
+  --create-namespace \
+  --set image.tag=main \
+  --devel
+```
+
+**Install a specific version:**
+```bash
+helm install buildkit-operator \
+  oci://ghcr.io/seatgeek/charts/buildkit-operator \
+  --version 1.0.0 \
+  --namespace buildkit-system \
+  --create-namespace
+```
+
+**Test a pull request:**
+```bash
+helm install buildkit-operator \
+  oci://ghcr.io/seatgeek/charts/buildkit-operator \
+  --namespace buildkit-system \
+  --create-namespace \
+  --set image.tag=pr-123
+```
+
+### Container Images
+
+Container images are available at:
+- `ghcr.io/seatgeek/buildkit-operator:latest` - Latest stable release (tagged releases only)
+- `ghcr.io/seatgeek/buildkit-operator:main` - Latest from main branch
+- `ghcr.io/seatgeek/buildkit-operator:v1.0.0` - Specific version releases
+- `ghcr.io/seatgeek/buildkit-operator:pr-123` - Pull request builds
+
+All images support both `linux/amd64` and `linux/arm64` architectures.
+
+**Note**: Development versions from the main branch use commit-based chart versions (e.g., `0.0.0-main-abc12345`) for better traceability and correlation with the source code.
+
+### Uninstallation
+
+```bash
+helm uninstall buildkit-operator --namespace buildkit-system
+```
+
 ## Local Development
 
 ### Prerequisites

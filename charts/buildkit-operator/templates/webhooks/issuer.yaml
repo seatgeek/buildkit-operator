@@ -1,0 +1,14 @@
+{{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "buildkit-operator.fullname" . }}-webhook-ca
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: certificate
+    app.kubernetes.io/created-by: buildkit-operator
+    app.kubernetes.io/part-of: buildkit-operator
+    {{- include "buildkit-operator.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+{{- end }}

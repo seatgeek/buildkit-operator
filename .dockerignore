@@ -1,0 +1,35 @@
+# Build artifacts
+bin/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test files and mocks
+*_test.go
+mock_*.go
+testdata/
+*.golden
+
+# Development files
+.git/
+.github/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation
+*.md
+LICENSE
+
+# Local development
+kind/
+.run/
+
+# Temporary files
+*.tmp
+*.bak
