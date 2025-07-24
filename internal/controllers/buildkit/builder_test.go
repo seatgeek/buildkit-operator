@@ -126,7 +126,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 			},
 		},
 		{
-			name: "debug logging",
+			name: "observability options",
 			buildkit: &v1alpha1.Buildkit{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-buildkit",
@@ -142,9 +142,17 @@ func TestBuilder_BuildPod(t *testing.T) {
 					Namespace: "test-ns",
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					Port:         1234,
-					Image:        "moby/buildkit:latest",
-					DebugLogging: true,
+					Port:  1234,
+					Image: "moby/buildkit:latest",
+					Observability: v1alpha1.BuildkitTemplateObservability{
+						DebugLogging: true,
+						OTLP: &v1alpha1.BuildkitTemplateOTLPSettings{
+							ServiceName: "buildkit-service",
+							ResourceAttributes: map[string]string{
+								"deployment.environment": "ci",
+							},
+						},
+					},
 				},
 			},
 		},
@@ -213,7 +221,6 @@ func TestBuilder_BuildPod(t *testing.T) {
 						"template.example.com/config": "enabled",
 					},
 					Rootless:      true,
-					DebugLogging:  true,
 					Port:          4567,
 					BuildkitdToml: "[worker.oci]\n  enabled = true\n",
 					Image:         "moby/buildkit:latest",
@@ -275,6 +282,15 @@ func TestBuilder_BuildPod(t *testing.T) {
 										"app.kubernetes.io/name": "custom-buildkit",
 									},
 								},
+							},
+						},
+					},
+					Observability: v1alpha1.BuildkitTemplateObservability{
+						DebugLogging: true,
+						OTLP: &v1alpha1.BuildkitTemplateOTLPSettings{
+							ServiceName: "custom-buildkit-service",
+							ResourceAttributes: map[string]string{
+								"deployment.environment": "ci",
 							},
 						},
 					},

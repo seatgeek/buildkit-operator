@@ -33,9 +33,6 @@ type BuildkitTemplateSpec struct {
 	// +kubebuilder:validation:Optional
 	Rootless bool `json:"rootless,omitempty"`
 
-	// +kubebuilder:validation:Optional
-	DebugLogging bool `json:"debugLogging,omitempty"`
-
 	// Port is the TCP port number on which the Buildkit instance will listen; default is 1234
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=1234
@@ -66,6 +63,10 @@ type BuildkitTemplateSpec struct {
 	// Lifecycle defines the lifecycle settings for the Buildkit pods
 	// +kubebuilder:validation:Optional
 	Lifecycle BuildkitTemplatePodLifecycle `json:"lifecycle,omitempty"`
+
+	// Observability defines the observability settings for the Buildkit pods
+	// +kubebuilder:validation:Optional
+	Observability BuildkitTemplateObservability `json:"observability,omitempty"`
 }
 
 type BuildkitTemplatePodScheduling struct {
@@ -103,6 +104,22 @@ type BuildkitTemplatePodLifecycle struct {
 
 	// +kubebuilder:validation:Optional
 	PreStopScript bool `json:"preStopScript,omitempty"`
+}
+
+type BuildkitTemplateObservability struct {
+	// +kubebuilder:validation:Optional
+	DebugLogging bool `json:"debugLogging,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	OTLP *BuildkitTemplateOTLPSettings `json:"otlp,omitempty"`
+}
+
+type BuildkitTemplateOTLPSettings struct {
+	// +kubebuilder:validation:Required
+	ServiceName string `json:"serviceName"`
+
+	// +kubebuilder:validation:Optional
+	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
 }
 
 type BuildkitTemplateStatus struct {

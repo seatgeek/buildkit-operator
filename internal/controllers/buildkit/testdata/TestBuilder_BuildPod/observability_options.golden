@@ -1,0 +1,56 @@
+metadata:
+  creationTimestamp: null
+  generateName: test-buildkit-
+  labels:
+    app.kubernetes.io/name: buildkit
+  namespace: test-ns
+spec:
+  containers:
+  - args:
+    - --addr
+    - unix:///run/buildkit/buildkitd.sock
+    - --addr
+    - tcp://0.0.0.0:1234
+    - --debug
+    env:
+    - name: HOST_IP
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: status.hostIP
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: http://$(HOST_IP):4317
+    - name: OTEL_SERVICE_NAME
+      value: buildkit-service
+    - name: OTEL_RESOURCE_ATTRIBUTES
+      value: service.name=buildkit-service,deployment.environment=ci
+    image: moby/buildkit:latest
+    livenessProbe:
+      failureThreshold: 6
+      grpc:
+        port: 1234
+        service: null
+      initialDelaySeconds: 5
+      periodSeconds: 30
+    name: buildkit
+    ports:
+    - containerPort: 1234
+      name: tcp
+      protocol: TCP
+    readinessProbe:
+      failureThreshold: 2
+      grpc:
+        port: 1234
+        service: null
+      initialDelaySeconds: 5
+      periodSeconds: 15
+    resources: {}
+    securityContext:
+      privileged: true
+    volumeMounts:
+    - mountPath: /var/lib/buildkit
+      name: buildkitd
+  volumes:
+  - emptyDir: {}
+    name: buildkitd
+status: {}

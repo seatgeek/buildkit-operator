@@ -47,8 +47,6 @@ spec:
                 items:
                   type: string
                 type: array
-              debugLogging:
-                type: boolean
               image:
                 default: moby/buildkit:latest
                 description: Image is the container image to use for the Buildkit
@@ -79,6 +77,24 @@ spec:
                     default: 900
                     format: int64
                     type: integer
+                type: object
+              observability:
+                description: Observability defines the observability settings for
+                  the Buildkit pods
+                properties:
+                  debugLogging:
+                    type: boolean
+                  otlp:
+                    properties:
+                      resourceAttributes:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      serviceName:
+                        type: string
+                    required:
+                    - serviceName
+                    type: object
                 type: object
               podAnnotations:
                 additionalProperties:

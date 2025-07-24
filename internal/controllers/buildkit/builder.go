@@ -7,6 +7,7 @@ package buildkit
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -146,8 +147,45 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 		}
 	}
 
-	if template.Spec.DebugLogging {
+	if template.Spec.Observability.DebugLogging {
 		container.Args = append(container.Args, "--debug")
+	}
+
+	if template.Spec.Observability.OTLP != nil {
+		var attrs strings.Builder
+		attrs.WriteString("service.name=")
+		attrs.WriteString(template.Spec.Observability.OTLP.ServiceName)
+
+		for k, v := range template.Spec.Observability.OTLP.ResourceAttributes {
+			attrs.WriteRune(',')
+			attrs.WriteString(k)
+			attrs.WriteRune('=')
+			attrs.WriteString(v)
+		}
+
+		container.Env = append(container.Env,
+			corev1.EnvVar{
+				Name: "HOST_IP",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						APIVersion: "v1",
+						FieldPath:  "status.hostIP",
+					},
+				},
+			},
+			corev1.EnvVar{
+				Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
+				Value: "http://$(HOST_IP):4317",
+			},
+			corev1.EnvVar{
+				Name:  "OTEL_SERVICE_NAME",
+				Value: template.Spec.Observability.OTLP.ServiceName,
+			},
+			corev1.EnvVar{
+				Name:  "OTEL_RESOURCE_ATTRIBUTES",
+				Value: attrs.String(),
+			},
+		)
 	}
 
 	// Mount buildkitd.toml config map if needed
