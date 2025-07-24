@@ -42,6 +42,8 @@ spec:
                 description: BuildkitdToml is the configuration for Buildkit in TOML
                   format
                 type: string
+              debugLogging:
+                type: boolean
               port:
                 default: 1234
                 description: Port is the TCP port number on which the Buildkit instance
@@ -53,9 +55,12 @@ spec:
                 description: RequireOwner indicates whether the Buildkit instance
                   must be created with an owner reference
                 type: boolean
+              rootless:
+                type: boolean
               template:
-                description: PodTemplate is the Pod template used to create the Buildkit
-                  instances
+                description: |-
+                  PodTemplate is the Pod template used to create the Buildkit instances
+                  Use it to override any of the default settings
                 properties:
                   metadata:
                     description: 'Standard object''s metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata'

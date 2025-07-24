@@ -1,4 +1,6 @@
 metadata:
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/buildkit: "true"
   creationTimestamp: null
   generateName: test-buildkit-
   labels:
@@ -8,9 +10,10 @@ spec:
   containers:
   - args:
     - --addr
-    - unix:///run/buildkit/buildkitd.sock
+    - unix:///run/user/1000/buildkit/buildkitd.sock
     - --addr
     - tcp://0.0.0.0:1234
+    - --oci-worker-no-process-sandbox
     image: moby/buildkit:latest
     livenessProbe:
       failureThreshold: 6
@@ -31,17 +34,14 @@ spec:
         service: null
       initialDelaySeconds: 5
       periodSeconds: 15
-    resources:
-      limits:
-        cpu: "1"
-        memory: 1Gi
-      requests:
-        cpu: 100m
-        memory: 128Mi
+    resources: {}
     securityContext:
-      privileged: true
+      runAsGroup: 1000
+      runAsUser: 1000
+      seccompProfile:
+        type: Unconfined
     volumeMounts:
-    - mountPath: /var/lib/buildkit
+    - mountPath: /home/user/.local/share/buildkit
       name: buildkitd
   restartPolicy: Never
   terminationGracePeriodSeconds: 900

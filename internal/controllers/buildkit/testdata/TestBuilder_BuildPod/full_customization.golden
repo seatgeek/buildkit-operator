@@ -13,6 +13,8 @@ spec:
   containers:
   - args:
     - --addr
+    - unix:///run/buildkit/buildkitd.sock
+    - --addr
     - tcp://0.0.0.0:8080
     image: custom/buildkit:v1.2.3
     livenessProbe:
@@ -41,10 +43,12 @@ spec:
       requests:
         cpu: 200m
         memory: 256Mi
+    securityContext:
+      privileged: true
     volumeMounts:
-    - mountPath: /home/user/.local/share/buildkit
+    - mountPath: /var/lib/buildkit
       name: buildkitd
-    - mountPath: /home/user/.config/buildkit
+    - mountPath: /etc/buildkit
       name: config
   nodeSelector:
     kubernetes.io/arch: amd64

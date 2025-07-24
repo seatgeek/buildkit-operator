@@ -11,6 +11,7 @@ spec:
     - unix:///run/buildkit/buildkitd.sock
     - --addr
     - tcp://0.0.0.0:1234
+    - --debug
     image: moby/buildkit:latest
     livenessProbe:
       failureThreshold: 6
@@ -31,13 +32,7 @@ spec:
         service: null
       initialDelaySeconds: 5
       periodSeconds: 15
-    resources:
-      limits:
-        cpu: "1"
-        memory: 1Gi
-      requests:
-        cpu: 100m
-        memory: 128Mi
+    resources: {}
     securityContext:
       privileged: true
     volumeMounts:

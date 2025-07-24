@@ -25,13 +25,11 @@ type BuildkitTemplate struct {
 }
 
 type BuildkitTemplateSpec struct {
-	// PodTemplate is the Pod template used to create the Buildkit instances
-	// +kubebuilder:validation:Required
-	PodTemplate corev1.PodTemplateSpec `json:"template"`
+	// +kubebuilder:validation:Optional
+	Rootless bool `json:"rootless,omitempty"`
 
-	// BuildkitdToml is the configuration for Buildkit in TOML format
-	// +kubebuilder:validation:Required
-	BuildkitdToml string `json:"buildkitdToml"`
+	// +kubebuilder:validation:Optional
+	DebugLogging bool `json:"debugLogging,omitempty"`
 
 	// Port is the TCP port number on which the Buildkit instance will listen; default is 1234
 	// +kubebuilder:validation:Optional
@@ -42,6 +40,15 @@ type BuildkitTemplateSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=false
 	RequireOwner bool `json:"requireOwner,omitempty"`
+
+	// BuildkitdToml is the configuration for Buildkit in TOML format
+	// +kubebuilder:validation:Required
+	BuildkitdToml string `json:"buildkitdToml"`
+
+	// PodTemplate is the Pod template used to create the Buildkit instances
+	// Use it to override any of the default settings
+	// +kubebuilder:validation:Required
+	PodTemplate corev1.PodTemplateSpec `json:"template"`
 }
 
 type BuildkitTemplateStatus struct {

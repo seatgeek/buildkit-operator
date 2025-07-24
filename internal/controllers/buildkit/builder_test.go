@@ -86,6 +86,50 @@ func TestBuilder_BuildPod(t *testing.T) {
 			},
 		},
 		{
+			name: "rootless",
+			buildkit: &v1alpha1.Buildkit{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-buildkit",
+					Namespace: "test-ns",
+				},
+				Spec: v1alpha1.BuildkitSpec{
+					Template: "test-template",
+				},
+			},
+			template: &v1alpha1.BuildkitTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-template",
+					Namespace: "test-ns",
+				},
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:     1234,
+					Rootless: true,
+				},
+			},
+		},
+		{
+			name: "debug logging",
+			buildkit: &v1alpha1.Buildkit{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-buildkit",
+					Namespace: "test-ns",
+				},
+				Spec: v1alpha1.BuildkitSpec{
+					Template: "test-template",
+				},
+			},
+			template: &v1alpha1.BuildkitTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-template",
+					Namespace: "test-ns",
+				},
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:         1234,
+					DebugLogging: true,
+				},
+			},
+		},
+		{
 			name: "with config map",
 			buildkit: &v1alpha1.Buildkit{
 				ObjectMeta: metav1.ObjectMeta{

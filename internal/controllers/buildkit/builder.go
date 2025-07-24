@@ -57,10 +57,12 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 					VolumeMounts: []corev1.VolumeMount{
 						{
 							Name:      "buildkitd",
-							MountPath: "/home/user/.local/share/buildkit",
+							MountPath: "/var/lib/buildkit",
 						},
 					},
 					Args: []string{
+						"--addr",
+						"unix:///run/buildkit/buildkitd.sock",
 						"--addr",
 						fmt.Sprintf("tcp://0.0.0.0:%d", template.Spec.Port),
 					},
@@ -91,6 +93,9 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 						PeriodSeconds:       30,
 						FailureThreshold:    6,
 					},
+					SecurityContext: &corev1.SecurityContext{
+						Privileged: ptr.To(true),
+					},
 				},
 			},
 			Volumes: []corev1.Volume{
@@ -109,6 +114,26 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 	// Create a reference to the main container to keep the following code cleaner
 	container := &pod.Spec.Containers[0]
 
+	if template.Spec.Rootless {
+		pod.Annotations = merge.Maps(pod.Annotations, map[string]string{
+			"container.apparmor.security.beta.kubernetes.io/" + buildkitContainerName: "true",
+		})
+		container.VolumeMounts[0].MountPath = "/home/user/.local/share/buildkit"
+		container.Args[1] = "unix:///run/user/1000/buildkit/buildkitd.sock"
+		container.Args = append(container.Args, "--oci-worker-no-process-sandbox")
+		container.SecurityContext = &corev1.SecurityContext{
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeUnconfined,
+			},
+			RunAsUser:  ptr.To(int64(1000)),
+			RunAsGroup: ptr.To(int64(1000)),
+		}
+	}
+
+	if template.Spec.DebugLogging {
+		container.Args = append(container.Args, "--debug")
+	}
+
 	// Mount config map if needed
 	if configMap := buildkit_template.NewBuilder(&template).ConfigMap(); configMap != nil {
 		pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
@@ -121,21 +146,27 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 				},
 			},
 		})
+
+		mountPath := "/etc/buildkit"
+		if template.Spec.Rootless {
+			mountPath = "/home/user/.config/buildkit"
+		}
+
 		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
 			Name:      "config",
-			MountPath: "/home/user/.config/buildkit",
+			MountPath: mountPath,
 		})
 	}
 
 	err := merge.Objects(
 		// Start with the default, fully-overrideable configs first
 		pod,
-		// Then apply the pod template from the BuildkitTemplate
+		// Then apply the user-defined pod template overrides from the BuildkitTemplate
 		corev1.Pod{
 			ObjectMeta: template.Spec.PodTemplate.ObjectMeta,
 			Spec:       template.Spec.PodTemplate.Spec,
 		},
-		// Then apply required metadata and resource overrides
+		// Then apply required metadata and resources
 		corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: b.buildkit.Name + "-",

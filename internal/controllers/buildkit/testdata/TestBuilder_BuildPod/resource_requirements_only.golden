@@ -8,6 +8,8 @@ spec:
   containers:
   - args:
     - --addr
+    - unix:///run/buildkit/buildkitd.sock
+    - --addr
     - tcp://0.0.0.0:1234
     image: moby/buildkit:latest
     livenessProbe:
@@ -36,8 +38,10 @@ spec:
       requests:
         cpu: 500m
         memory: 512Mi
+    securityContext:
+      privileged: true
     volumeMounts:
-    - mountPath: /home/user/.local/share/buildkit
+    - mountPath: /var/lib/buildkit
       name: buildkitd
   restartPolicy: Never
   terminationGracePeriodSeconds: 900
