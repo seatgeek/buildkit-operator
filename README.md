@@ -36,11 +36,15 @@ spec:
       enabled = false
 
   resources:
-    requests:
-      cpu: 500m
-      memory: 8Gi
-    limits:
-      memory: 8Gi
+    default:
+      requests:
+        cpu: 500m
+        memory: 8Gi
+      limits:
+        memory: 8Gi
+    maximum:
+      cpu: 8
+      memory: 16Gi
 
   scheduling:
     nodeSelector:
