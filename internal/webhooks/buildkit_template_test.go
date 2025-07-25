@@ -147,6 +147,7 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 
 			Expect(created.Spec.Port).To(Equal(int32(1234)))
 			Expect(created.Spec.Image).To(Equal("moby/buildkit:latest"))
+			Expect(created.Spec.ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
 			Expect(*created.Spec.Lifecycle.TerminationGracePeriodSeconds).To(Equal(int64(900)))
 		})
 
@@ -160,8 +161,9 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.BuildkitTemplateSpec{
-					Port:  customPort,
-					Image: "moby/buildkit:v0.23.0",
+					Port:            customPort,
+					Image:           "moby/buildkit:v0.23.0",
+					ImagePullPolicy: corev1.PullAlways,
 					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
 						TerminationGracePeriodSeconds: &customTerminationGracePeriod,
 					},
@@ -174,6 +176,7 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 			Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), &created)).To(Succeed())
 			Expect(created.Spec.Port).To(Equal(customPort))
 			Expect(created.Spec.Image).To(Equal("moby/buildkit:v0.23.0"))
+			Expect(created.Spec.ImagePullPolicy).To(Equal(corev1.PullAlways))
 			Expect(*created.Spec.Lifecycle.TerminationGracePeriodSeconds).To(Equal(customTerminationGracePeriod))
 		})
 	})

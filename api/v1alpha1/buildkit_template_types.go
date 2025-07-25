@@ -47,6 +47,11 @@ type BuildkitTemplateSpec struct {
 	// +kubebuilder:default="moby/buildkit:latest"
 	Image string `json:"image,omitempty"`
 
+	// ImagePullPolicy defines the image pull policy for the Buildkit instance
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=IfNotPresent
+	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+
 	// +kubebuilder:validation:Optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
