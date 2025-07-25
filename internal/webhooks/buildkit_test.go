@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	sdktest "github.com/reddit/achilles-sdk/pkg/test"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -166,6 +167,87 @@ var _ = Describe("BuildkitValidator", func() {
 			}
 
 			Expect(c.Create(ctx, buildkit)).To(MatchError(ContainSubstring("requires owner references but none are present")))
+		})
+	})
+
+	Context("When updating an existing Buildkit resource", func() {
+		It("should allow updates to the metadata", func() {
+			buildkit := &v1alpha1.Buildkit{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-buildkit",
+					Namespace: namespace,
+					Labels: map[string]string{
+						"updated": "false",
+					},
+				},
+				Spec: v1alpha1.BuildkitSpec{
+					Template: someExistingTemplateName,
+				},
+			}
+
+			Expect(c.Create(ctx, buildkit)).To(Succeed())
+
+			// Update the metadata
+			buildkit.Labels = map[string]string{"updated": "true"}
+			Expect(c.Update(ctx, buildkit)).To(Succeed())
+		})
+
+		It("should disallow updates to the spec", func() {
+			buildkit := &v1alpha1.Buildkit{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-buildkit",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.BuildkitSpec{
+					Template: someExistingTemplateName,
+					Resources: &corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("500m"),
+							corev1.ResourceMemory: resource.MustParse("256Mi"),
+						},
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("1"),
+							corev1.ResourceMemory: resource.MustParse("512Mi"),
+						},
+					},
+					Annotations: map[string]string{
+						"foo": "foo",
+					},
+					Labels: map[string]string{
+						"bar": "bar",
+					},
+				},
+			}
+
+			Expect(c.Create(ctx, buildkit)).To(Succeed())
+
+			// Try changing the template
+			buildkit.Spec.Template = "some-other-template"
+			Expect(c.Update(ctx, buildkit)).To(MatchError(ContainSubstring("spec changes are not allowed")))
+			// Reload to make sure the change didn't persist
+			Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkit), buildkit)).To(Succeed())
+			Expect(buildkit.Spec.Template).To(Equal(someExistingTemplateName))
+
+			// Try changing the resources
+			buildkit.Spec.Resources.Requests[corev1.ResourceMemory] = resource.MustParse("512Mi")
+			Expect(c.Update(ctx, buildkit)).To(MatchError(ContainSubstring("spec changes are not allowed")))
+			// Reload to make sure the change didn't persist
+			Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkit), buildkit)).To(Succeed())
+			Expect(*buildkit.Spec.Resources.Requests.Memory()).To(Equal(resource.MustParse("256Mi")))
+
+			// Try changing the annotations
+			buildkit.Spec.Annotations["new-annotation"] = "new-value"
+			Expect(c.Update(ctx, buildkit)).To(MatchError(ContainSubstring("spec changes are not allowed")))
+			// Reload to make sure the change didn't persist
+			Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkit), buildkit)).To(Succeed())
+			Expect(buildkit.Spec.Annotations).To(Not(HaveKey("new-annotation")))
+
+			// Try changing the labels
+			buildkit.Spec.Labels["bar"] = "baz"
+			Expect(c.Update(ctx, buildkit)).To(MatchError(ContainSubstring("spec changes are not allowed")))
+			// Reload to make sure the change didn't persist
+			Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkit), buildkit)).To(Succeed())
+			Expect(buildkit.Spec.Labels["bar"]).To(Equal("bar"))
 		})
 	})
 })
