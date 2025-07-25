@@ -200,7 +200,7 @@ var _ = Describe("BuildkitValidator", func() {
 				},
 				Spec: v1alpha1.BuildkitSpec{
 					Template: someExistingTemplateName,
-					Resources: &corev1.ResourceRequirements{
+					Resources: corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("500m"),
 							corev1.ResourceMemory: resource.MustParse("256Mi"),

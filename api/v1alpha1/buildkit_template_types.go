@@ -53,7 +53,7 @@ type BuildkitTemplateSpec struct {
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 
 	// +kubebuilder:validation:Optional
-	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+	Resources BuildkitTemplateResources `json:"resources,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	Command []string `json:"command,omitempty"`
@@ -125,6 +125,14 @@ type BuildkitTemplateOTLPSettings struct {
 
 	// +kubebuilder:validation:Optional
 	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
+}
+
+type BuildkitTemplateResources struct {
+	// +kubebuilder:validation:Optional
+	Default corev1.ResourceRequirements `json:"default,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	Maximum corev1.ResourceList `json:"maximum,omitempty"`
 }
 
 type BuildkitTemplateStatus struct {

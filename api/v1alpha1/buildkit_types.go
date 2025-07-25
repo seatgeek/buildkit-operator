@@ -35,7 +35,7 @@ type BuildkitSpec struct {
 	// Resources defines the resource requirements for the Buildkit instance.
 	// It is optional and can be omitted if the default resource limits are sufficient.
 	// +kubebuilder:validation:Optional
-	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// Annotations can be used to attach arbitrary metadata to the Buildkit instance.
 	// +kubebuilder:validation:Optional

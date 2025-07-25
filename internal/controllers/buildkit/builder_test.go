@@ -188,7 +188,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 				},
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
-					Resources: &corev1.ResourceRequirements{
+					Resources: corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("200m"),
 							corev1.ResourceMemory: resource.MustParse("256Mi"),
@@ -224,14 +224,20 @@ func TestBuilder_BuildPod(t *testing.T) {
 					Port:          4567,
 					BuildkitdToml: "[worker.oci]\n  enabled = true\n",
 					Image:         "moby/buildkit:latest",
-					Resources: corev1.ResourceRequirements{
-						Requests: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("100m"),
-							corev1.ResourceMemory: resource.MustParse("128Mi"),
+					Resources: v1alpha1.BuildkitTemplateResources{
+						Maximum: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("2000m"),
+							corev1.ResourceMemory: resource.MustParse("4Gi"),
 						},
-						Limits: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("1000m"),
-							corev1.ResourceMemory: resource.MustParse("1Gi"),
+						Default: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("100m"),
+								corev1.ResourceMemory: resource.MustParse("128Mi"),
+							},
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("1000m"),
+								corev1.ResourceMemory: resource.MustParse("1Gi"),
+							},
 						},
 					},
 					Command: []string{
@@ -298,7 +304,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 			},
 		},
 		{
-			name: "requested resources exceed template resources",
+			name: "requested resources exceed template defaults",
 			buildkit: &v1alpha1.Buildkit{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-buildkit",
@@ -306,7 +312,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 				},
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
-					Resources: &corev1.ResourceRequirements{
+					Resources: corev1.ResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("2000m"),
 							corev1.ResourceMemory: resource.MustParse("4Gi"),
@@ -326,14 +332,16 @@ func TestBuilder_BuildPod(t *testing.T) {
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:  1234,
 					Image: "moby/buildkit:latest",
-					Resources: corev1.ResourceRequirements{
-						Requests: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("1000m"),
-							corev1.ResourceMemory: resource.MustParse("2Gi"),
-						},
-						Limits: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("3000m"),
-							corev1.ResourceMemory: resource.MustParse("6Gi"),
+					Resources: v1alpha1.BuildkitTemplateResources{
+						Default: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("1000m"),
+								corev1.ResourceMemory: resource.MustParse("2Gi"),
+							},
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("3000m"),
+								corev1.ResourceMemory: resource.MustParse("6Gi"),
+							},
 						},
 					},
 				},

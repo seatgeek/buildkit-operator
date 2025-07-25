@@ -82,7 +82,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 							Protocol:      "TCP",
 						},
 					},
-					Resources: resources.Merge(b.buildkit.Spec.Resources, template.Spec.Resources),
+					Resources: resources.WithMaximums(template.Spec.Resources.Maximum, template.Spec.Resources.Default, b.buildkit.Spec.Resources),
 					ReadinessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
 							GRPC: &corev1.GRPCAction{
