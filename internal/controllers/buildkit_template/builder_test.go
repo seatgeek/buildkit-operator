@@ -57,7 +57,7 @@ func TestBuilder_ConfigMapName(t *testing.T) {
 			t.Parallel()
 
 			builder := NewBuilder(tt.template)
-			got := builder.ConfigMapName()
+			got := builder.configMapName()
 
 			assert.Equal(t, tt.want, got)
 		})
@@ -164,7 +164,7 @@ func TestBuilder_ScriptsConfigMapName(t *testing.T) {
 			t.Parallel()
 
 			builder := NewBuilder(tt.template)
-			got := builder.ScriptsConfigMapName()
+			got := builder.scriptsConfigMapName()
 
 			assert.Equal(t, tt.want, got)
 		})

@@ -24,8 +24,15 @@ func NewBuilder(template *v1alpha1.BuildkitTemplate) Builder {
 	}
 }
 
-// ConfigMapName returns the potential name of the ConfigMap that _might_ be created for the BuildkitTemplate.
-func (b Builder) ConfigMapName() string {
+func (b Builder) AllConfigMaps() map[string]*corev1.ConfigMap {
+	return map[string]*corev1.ConfigMap{
+		b.configMapName():        b.ConfigMap(),
+		b.scriptsConfigMapName(): b.ScriptsConfigMap(),
+	}
+}
+
+// configMapName returns the potential name of the ConfigMap that _might_ be created for the BuildkitTemplate.
+func (b Builder) configMapName() string {
 	if b.template == nil {
 		return ""
 	}
@@ -41,7 +48,7 @@ func (b Builder) ConfigMap() *corev1.ConfigMap {
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      b.ConfigMapName(),
+			Name:      b.configMapName(),
 			Namespace: b.template.Namespace,
 		},
 		Data: map[string]string{
@@ -50,7 +57,7 @@ func (b Builder) ConfigMap() *corev1.ConfigMap {
 	}
 }
 
-func (b Builder) ScriptsConfigMapName() string {
+func (b Builder) scriptsConfigMapName() string {
 	if b.template == nil {
 		return ""
 	}

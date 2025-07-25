@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
+	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit_template"
 )
 
 var _ = Describe("BuildkitTemplate Reconciler", func() {
@@ -50,6 +51,9 @@ var _ = Describe("BuildkitTemplate Reconciler", func() {
 			},
 			Spec: v1alpha1.BuildkitTemplateSpec{
 				BuildkitdToml: "", // Start with empty TOML
+				Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
+					PreStopScript: false, // And no pre-stop script
+				},
 			},
 		}
 
@@ -150,6 +154,44 @@ var _ = Describe("BuildkitTemplate Reconciler", func() {
 			var updated v1alpha1.BuildkitTemplate
 			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), &updated)).To(Succeed())
 			g.Expect(updated.GetCondition(api.TypeReady).Status).To(Equal(corev1.ConditionTrue))
+		}).Should(Succeed())
+	})
+
+	It("should create pre-stop script ConfigMap when enabled and delete it when disabled", func() {
+		By("creating BuildkitTemplate with pre-stop script disabled")
+		buildkitTemplate.Spec.Lifecycle.PreStopScript = false
+		Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
+
+		By("verifying no ConfigMap for pre-stop script is created")
+		configMapKey := client.ObjectKey{Name: fmt.Sprintf("buildkit-%s-scripts", buildkitTemplate.Name), Namespace: namespace}
+		Consistently(func(g Gomega) {
+			configMap := &corev1.ConfigMap{}
+			err := c.Get(ctx, configMapKey, configMap)
+			g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "ConfigMap should not exist")
+		}).Should(Succeed())
+
+		By("enabling the pre-stop script")
+		Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), buildkitTemplate)).To(Succeed())
+		buildkitTemplate.Spec.Lifecycle.PreStopScript = true
+		Expect(c.Update(ctx, buildkitTemplate)).To(Succeed())
+
+		By("verifying ConfigMap for pre-stop script is created")
+		Eventually(func(g Gomega) {
+			configMap := &corev1.ConfigMap{}
+			g.Expect(c.Get(ctx, configMapKey, configMap)).To(Succeed())
+			g.Expect(configMap.Data).To(HaveKey(buildkit_template.PreStopScriptName))
+		}).Should(Succeed())
+
+		By("disabling the pre-stop script again")
+		Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), buildkitTemplate)).To(Succeed())
+		buildkitTemplate.Spec.Lifecycle.PreStopScript = false
+		Expect(c.Update(ctx, buildkitTemplate)).To(Succeed())
+
+		By("verifying ConfigMap for pre-stop script is deleted")
+		Eventually(func(g Gomega) {
+			configMap := &corev1.ConfigMap{}
+			err := c.Get(ctx, configMapKey, configMap)
+			g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "ConfigMap should be deleted")
 		}).Should(Succeed())
 	})
 })
