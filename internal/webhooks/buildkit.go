@@ -7,6 +7,7 @@ package webhooks
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,7 +34,7 @@ func NewBuildkitValidator(c client.Reader) *BuildkitValidator {
 	}
 }
 
-func (v *BuildkitValidator) validate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *BuildkitValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	bk, ok := obj.(*v1alpha1.Buildkit)
 	if !ok {
 		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected Buildkit object but got %T", obj))
@@ -72,12 +73,22 @@ func (v *BuildkitValidator) validate(ctx context.Context, obj runtime.Object) (a
 	return nil, nil
 }
 
-func (v *BuildkitValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	return v.validate(ctx, obj)
-}
+func (v *BuildkitValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	oldBk, ok := oldObj.(*v1alpha1.Buildkit)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected Buildkit object but got %T", oldObj))
+	}
 
-func (v *BuildkitValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
-	return v.validate(ctx, newObj)
+	newBk, ok := newObj.(*v1alpha1.Buildkit)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected Buildkit object but got %T", newObj))
+	}
+
+	if !reflect.DeepEqual(oldBk.Spec, newBk.Spec) {
+		return nil, apierrors.NewBadRequest("spec changes are not allowed for existing Buildkit objects")
+	}
+
+	return nil, nil
 }
 
 func (v *BuildkitValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {

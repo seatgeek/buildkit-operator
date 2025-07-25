@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/BurntSushi/toml"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -121,6 +122,10 @@ func (b BuildkitTemplateDefaulter) Default(_ context.Context, obj runtime.Object
 		} else {
 			bkt.Spec.Image = "moby/buildkit:latest"
 		}
+	}
+
+	if bkt.Spec.ImagePullPolicy == "" {
+		bkt.Spec.ImagePullPolicy = corev1.PullIfNotPresent
 	}
 
 	return nil

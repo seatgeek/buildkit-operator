@@ -38,25 +38,27 @@ type reconciler struct {
 	log    *zap.SugaredLogger
 }
 
-func (r *reconciler) createConfigMap() *state {
+func (r *reconciler) createConfigMaps() *state {
 	return &state{
-		Name:      "create-configmap",
+		Name:      "create-configmaps",
 		Condition: conditionReady,
 		Transition: func(ctx context.Context, obj *v1alpha1.BuildkitTemplate, out *types.OutputSet) (*state, types.Result) {
 			log := r.log.With("name", obj.Name, "namespace", obj.Namespace)
 
 			builder := NewBuilder(obj)
-			if configMap := builder.ConfigMap(); configMap != nil {
-				log.Debugw("applying configmap", "configmap", configMap.Name)
-				out.Apply(configMap)
-			} else {
-				log.Debugw("removing configmap", "configmap", builder.ConfigMapName())
-				out.DeleteByRef(api.TypedObjectRef{
-					Version:   "v1",
-					Kind:      "ConfigMap",
-					Name:      builder.ConfigMapName(),
-					Namespace: obj.Namespace,
-				})
+			for name, configMap := range builder.AllConfigMaps() {
+				if configMap != nil {
+					log.Debugw("applying configmap", "configmap", name)
+					out.Apply(configMap)
+				} else {
+					log.Debugw("removing configmap", "configmap", name)
+					out.DeleteByRef(api.TypedObjectRef{
+						Version:   "v1",
+						Kind:      "ConfigMap",
+						Name:      name,
+						Namespace: obj.Namespace,
+					})
+				}
 			}
 
 			return nil, types.DoneResult()
@@ -84,7 +86,7 @@ func SetupController(
 
 	builder := fsm.NewBuilder(
 		&v1alpha1.BuildkitTemplate{},
-		r.createConfigMap(),
+		r.createConfigMaps(),
 		mgr.GetScheme(),
 	).Manages(
 		corev1.SchemeGroupVersion.WithKind("ConfigMap"),

@@ -47,8 +47,13 @@ type BuildkitTemplateSpec struct {
 	// +kubebuilder:default="moby/buildkit:latest"
 	Image string `json:"image,omitempty"`
 
+	// ImagePullPolicy defines the image pull policy for the Buildkit instance
 	// +kubebuilder:validation:Optional
-	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+	// +kubebuilder:default=IfNotPresent
+	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	Resources BuildkitTemplateResources `json:"resources,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	Command []string `json:"command,omitempty"`
@@ -120,6 +125,14 @@ type BuildkitTemplateOTLPSettings struct {
 
 	// +kubebuilder:validation:Optional
 	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
+}
+
+type BuildkitTemplateResources struct {
+	// +kubebuilder:validation:Optional
+	Default corev1.ResourceRequirements `json:"default,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	Maximum corev1.ResourceList `json:"maximum,omitempty"`
 }
 
 type BuildkitTemplateStatus struct {
