@@ -1,4 +1,4 @@
-# buidkit-operator
+# buildkit-operator
 
 [![go.mod](https://img.shields.io/github/go-mod/go-version/seatgeek/buildkit-operator?style=flat-square)](go.mod)
 [![LICENSE](https://img.shields.io/github/license/seatgeek/buildkit-operator?style=flat-square)](LICENSE)
@@ -10,7 +10,7 @@ An operator for managing BuildKit instances on Kubernetes.
 
 ## How it Works
 
-First, deploy one or more `BuildkitTemplate` resources that define a pod template and `buildkitd.toml` configuration for BuildKit instances:
+First, deploy one or more `BuildkitTemplate` resources that define the configuration and scheduling for BuildKit instances:
 
 ```yaml
 apiVersion: buildkit.seatgeek.io/v1alpha1
@@ -19,6 +19,10 @@ metadata:
   name: buildkit-arm64
   namespace: some-ns
 spec:
+  # This is a simplified example; many other spec fields are available.
+  rootless: true
+  port: 1234
+
   buildkitdToml: |
     [log]
       format = "json"
@@ -31,30 +35,22 @@ spec:
     [worker.containerd]
       enabled = false
 
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/instance: buildkit-arm64
-    spec:
-      containers:
-        - name: buildkit
-          securityContext:
-            privileged: true
-            runAsNonRoot: false
-            readOnlyRootFilesystem: false
-            allowPrivilegeEscalation: true
-            seccompProfile:
-              type: Unconfined
-            appArmorProfile:
-              type: Unconfined
-      nodeSelector:
-        kubernetes.io/arch: arm64
-        kubernetes.io/os: linux
-      tolerations:
-        - key: dedicated
-          operator: Equal
-          value: buildkit
-          effect: NoSchedule
+  resources:
+    requests:
+      cpu: 500m
+      memory: 8Gi
+    limits:
+      memory: 8Gi
+
+  scheduling:
+    nodeSelector:
+      kubernetes.io/arch: arm64
+      kubernetes.io/os: linux
+    tolerations:
+      - key: dedicated
+        operator: Equal
+        value: buildkit
+        effect: NoSchedule
 ```
 
 Then create any number of `Buildkit` resources that reference the templates:
@@ -69,16 +65,10 @@ spec:
   template: buildkit-arm64
 ```
 
-The operator will then deploy a BuildKit pod for each `Buildkit` resource, setting the TCP connection URL into the resource's status:
+The operator will then deploy a BuildKit pod for each `Buildkit` resource, setting the TCP connection URL into the `Buildkit` resource's `status`:
 
 ```yaml
-apiVersion: buildkit.seatgeek.io/v1alpha1
-kind: Buildkit
-metadata:
-  name: buildkit-arm64-instance
-  namespace: some-ns
-spec:
-  template: buildkit-arm64
+# ...
 status:
   endpoint: tcp://10.1.2.3:1234
 ```
