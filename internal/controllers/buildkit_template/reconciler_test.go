@@ -17,7 +17,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
-	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit_template"
 )
 
 var _ = Describe("BuildkitTemplate Reconciler", func() {
@@ -179,7 +178,7 @@ var _ = Describe("BuildkitTemplate Reconciler", func() {
 		Eventually(func(g Gomega) {
 			configMap := &corev1.ConfigMap{}
 			g.Expect(c.Get(ctx, configMapKey, configMap)).To(Succeed())
-			g.Expect(configMap.Data).To(HaveKey(buildkit_template.PreStopScriptName))
+			g.Expect(configMap.Data).To(HaveKey("buildkit-prestop.sh"))
 		}).Should(Succeed())
 
 		By("disabling the pre-stop script again")
