@@ -11,7 +11,6 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/reddit/achilles-sdk-api/api"
 	"github.com/reddit/achilles-sdk/pkg/fsm"
 	"github.com/reddit/achilles-sdk/pkg/fsm/types"
 	"github.com/reddit/achilles-sdk/pkg/io"
@@ -82,7 +81,7 @@ func (r *reconciler) runBuildkit() *state {
 				return nil, types.Result{
 					Done: true,
 					CustomStatusCondition: &types.ResultStatusCondition{
-						Reason:  api.ReasonUnavailable,
+						Reason:  "PodFailed",
 						Status:  corev1.ConditionFalse,
 						Message: fmt.Sprintf("Buildkit pod %s has failed: %s", pod.Name, cmp.Or(pod.Status.Message, pod.Status.Reason, "unknown failure")),
 					},

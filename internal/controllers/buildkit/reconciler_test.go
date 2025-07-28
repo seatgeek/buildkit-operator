@@ -157,7 +157,7 @@ var _ = Describe("Buildkit Reconciler", func() {
 			g.Expect(updated.Status.Endpoint).To(BeEmpty())
 			g.Expect(updated.GetCondition(v1alpha1.TypeDeployed)).To(MatchCondition(api.Condition{
 				Status: corev1.ConditionFalse,
-				Reason: api.ReasonUnavailable,
+				Reason: "PodFailed",
 			}))
 		}).Should(Succeed())
 	})
