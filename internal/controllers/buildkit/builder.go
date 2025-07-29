@@ -100,6 +100,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 							},
 						},
 						InitialDelaySeconds: 5,
+						TimeoutSeconds:      3,
 						PeriodSeconds:       30,
 						FailureThreshold:    6,
 					},

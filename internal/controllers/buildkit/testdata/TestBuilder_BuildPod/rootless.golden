@@ -22,6 +22,7 @@ spec:
         service: null
       initialDelaySeconds: 5
       periodSeconds: 30
+      timeoutSeconds: 3
     name: buildkit
     ports:
     - containerPort: 1234
