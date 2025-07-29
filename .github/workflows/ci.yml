@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v**']
   pull_request: ~
   workflow_dispatch: ~
 
@@ -146,9 +147,10 @@ jobs:
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             # For tagged releases, use the tag as version
             CHART_VERSION="${{ github.ref_name }}"
+            APP_VERSION="${{ github.ref_name }}"
             # Remove 'v' prefix if present
             CHART_VERSION="${CHART_VERSION#v}"
-            APP_VERSION="${{ github.ref_name }}"
+            APP_VERSION="${APP_VERSION#v}"
           elif [[ "${{ github.ref_name }}" == "main" ]]; then
             # For main branch, use a development version with commit SHA
             CHART_VERSION="0.0.0-main-${GITHUB_SHA:0:8}"
