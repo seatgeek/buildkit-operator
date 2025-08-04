@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/reddit/achilles-sdk/pkg/bootstrap"
 	"github.com/reddit/achilles-sdk/pkg/fsm/metrics"
 	"github.com/reddit/achilles-sdk/pkg/io"
@@ -18,6 +17,7 @@ import (
 	"github.com/reddit/achilles-sdk/pkg/ratelimiter"
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	crtMetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit"
 	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit_template"
@@ -81,8 +81,7 @@ func initStartFunc(o *opts) bootstrap.StartFunc {
 		}
 
 		// metrics sink
-		promReg := prometheus.NewRegistry()
-		promMetrics := metrics.MustMakeMetrics(mgr.GetScheme(), promReg)
+		promMetrics := metrics.MustMakeMetrics(mgr.GetScheme(), crtMetrics.Registry)
 
 		// map flag values into controlplane's context
 		cpCtx := controlplane.Context{
