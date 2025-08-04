@@ -47,6 +47,7 @@ spec:
         - --leader-election=true
         - --leader-election-id={{ include "buildkit-operator.fullname" . }}-election
         {{- end }}
+        - --dev-logging=false
         command:
         - /operator
         {{- with .Values.operator.env }}
