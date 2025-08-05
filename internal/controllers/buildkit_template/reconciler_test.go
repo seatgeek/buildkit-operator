@@ -66,20 +66,20 @@ var _ = Describe("BuildkitTemplate Reconciler", func() {
 		By("creating a BuildkitTemplate with empty buildkitd.toml")
 		Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
 
-		By("verifying no ConfigMap is created")
-		configMapKey := client.ObjectKey{Name: fmt.Sprintf("buildkit-%s-toml", buildkitTemplate.Name), Namespace: namespace}
-		Consistently(func(g Gomega) {
-			configMap := &corev1.ConfigMap{}
-			err := c.Get(ctx, configMapKey, configMap)
-			g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "ConfigMap should not exist")
-		}).Should(Succeed())
-
 		By("verifying Ready condition is True")
 		Eventually(func(g Gomega) {
 			var updated v1alpha1.BuildkitTemplate
 			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), &updated)).To(Succeed())
 			g.Expect(updated.GetCondition(api.TypeReady).Status).To(Equal(corev1.ConditionTrue))
 		}).Should(Succeed())
+
+		By("verifying no ConfigMap is created")
+		configMapKey := client.ObjectKey{Name: fmt.Sprintf("buildkit-%s-toml", buildkitTemplate.Name), Namespace: namespace}
+		Consistently(func(g Gomega) {
+			configMap := &corev1.ConfigMap{}
+			err := c.Get(ctx, configMapKey, configMap)
+			g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "ConfigMap should not exist")
+		}, "3s", "100ms").Should(Succeed())
 	})
 
 	It("should create ConfigMap when buildkitd.toml is added", func() {
@@ -87,8 +87,11 @@ var _ = Describe("BuildkitTemplate Reconciler", func() {
 		Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
 
 		By("updating BuildkitTemplate with buildkitd.toml content")
-		buildkitTemplate.Spec.BuildkitdToml = someTomlContent
-		Expect(c.Update(ctx, buildkitTemplate)).To(Succeed())
+		Eventually(func(g Gomega) {
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), buildkitTemplate)).To(Succeed())
+			buildkitTemplate.Spec.BuildkitdToml = someTomlContent
+			g.Expect(c.Update(ctx, buildkitTemplate)).To(Succeed())
+		}).Should(Succeed())
 
 		By("verifying ConfigMap is created with correct content")
 		configMapKey := client.ObjectKey{Name: fmt.Sprintf("buildkit-%s-toml", buildkitTemplate.Name), Namespace: namespace}
@@ -112,8 +115,11 @@ var _ = Describe("BuildkitTemplate Reconciler", func() {
 		Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
 
 		By("updating BuildkitTemplate with different buildkitd.toml content")
-		buildkitTemplate.Spec.BuildkitdToml = someOtherTomlContent
-		Expect(c.Update(ctx, buildkitTemplate)).To(Succeed())
+		Eventually(func(g Gomega) {
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), buildkitTemplate)).To(Succeed())
+			buildkitTemplate.Spec.BuildkitdToml = someOtherTomlContent
+			g.Expect(c.Update(ctx, buildkitTemplate)).To(Succeed())
+		}).Should(Succeed())
 
 		By("verifying ConfigMap data is updated")
 		configMapKey := client.ObjectKey{Name: fmt.Sprintf("buildkit-%s-toml", buildkitTemplate.Name), Namespace: namespace}
@@ -137,8 +143,11 @@ var _ = Describe("BuildkitTemplate Reconciler", func() {
 		Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
 
 		By("updating BuildkitTemplate back to empty buildkitd.toml")
-		buildkitTemplate.Spec.BuildkitdToml = ""
-		Expect(c.Update(ctx, buildkitTemplate)).To(Succeed())
+		Eventually(func(g Gomega) {
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), buildkitTemplate)).To(Succeed())
+			buildkitTemplate.Spec.BuildkitdToml = ""
+			g.Expect(c.Update(ctx, buildkitTemplate)).To(Succeed())
+		}).Should(Succeed())
 
 		By("verifying ConfigMap is deleted")
 		configMapKey := client.ObjectKey{Name: fmt.Sprintf("buildkit-%s-toml", buildkitTemplate.Name), Namespace: namespace}
@@ -161,18 +170,27 @@ var _ = Describe("BuildkitTemplate Reconciler", func() {
 		buildkitTemplate.Spec.Lifecycle.PreStopScript = false
 		Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
 
+		By("verifying Ready condition is True")
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.BuildkitTemplate
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), &updated)).To(Succeed())
+			g.Expect(updated.GetCondition(api.TypeReady).Status).To(Equal(corev1.ConditionTrue))
+		}).Should(Succeed())
+
 		By("verifying no ConfigMap for pre-stop script is created")
 		configMapKey := client.ObjectKey{Name: fmt.Sprintf("buildkit-%s-scripts", buildkitTemplate.Name), Namespace: namespace}
 		Consistently(func(g Gomega) {
 			configMap := &corev1.ConfigMap{}
 			err := c.Get(ctx, configMapKey, configMap)
 			g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "ConfigMap should not exist")
-		}).Should(Succeed())
+		}, "3s", "100ms").Should(Succeed())
 
 		By("enabling the pre-stop script")
-		Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), buildkitTemplate)).To(Succeed())
-		buildkitTemplate.Spec.Lifecycle.PreStopScript = true
-		Expect(c.Update(ctx, buildkitTemplate)).To(Succeed())
+		Eventually(func(g Gomega) {
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), buildkitTemplate)).To(Succeed())
+			buildkitTemplate.Spec.Lifecycle.PreStopScript = true
+			g.Expect(c.Update(ctx, buildkitTemplate)).To(Succeed())
+		}).Should(Succeed())
 
 		By("verifying ConfigMap for pre-stop script is created")
 		Eventually(func(g Gomega) {
@@ -182,9 +200,11 @@ var _ = Describe("BuildkitTemplate Reconciler", func() {
 		}).Should(Succeed())
 
 		By("disabling the pre-stop script again")
-		Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), buildkitTemplate)).To(Succeed())
-		buildkitTemplate.Spec.Lifecycle.PreStopScript = false
-		Expect(c.Update(ctx, buildkitTemplate)).To(Succeed())
+		Eventually(func(g Gomega) {
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), buildkitTemplate)).To(Succeed())
+			buildkitTemplate.Spec.Lifecycle.PreStopScript = false
+			g.Expect(c.Update(ctx, buildkitTemplate)).To(Succeed())
+		}).Should(Succeed())
 
 		By("verifying ConfigMap for pre-stop script is deleted")
 		Eventually(func(g Gomega) {
