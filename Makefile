@@ -18,13 +18,20 @@ lint-fix: golangci-lint goimports-reviser
 	go mod tidy
 
 .PHONY: generate
-generate: controller-gen yq
+generate: controller-gen client-gen yq
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="{./api/..., ./internal/webhooks/...}" output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=manager-role paths="{./internal/controllers/...}"
 	$(CONTROLLER_GEN) object paths="{./api/...}"
 	cp config/webhook/manifests.yaml kind/webhook/manifests.yaml
 	rm charts/buildkit-operator/crds/*
 	cp config/crd/bases/*.yaml charts/buildkit-operator/crds/
+	rm -rf api/client
+	$(CLIENT_GEN) \
+ 		--output-dir=api/client \
+ 		--output-pkg=github.com/seatgeek/buildkit-operator/api/client \
+ 		--input-base=github.com/seatgeek/buildkit-operator/api \
+ 		--input v1alpha1 \
+ 		--clientset-name=versioned
 	curl -sL https://raw.githubusercontent.com/seatgeek/buildkit-prestop-script/$(BUILDKIT_PRESTOP_VERSION)/buildkit-prestop.sh -o internal/prestop/buildkit-prestop.sh
 
 .PHONY: validate-helm-templates
@@ -189,6 +196,9 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 # renovate: datasource=go depName=sigs.k8s.io/controller-tools
 CONTROLLER_TOOLS_VERSION ?= v0.16.5
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
+# renovate: datasource=go depName=k8s.io/code-generator
+CLIENT_GEN_VERSION ?= v0.32.7
+CLIENT_GEN ?= $(LOCALBIN)/client-gen-$(CLIENT_GEN_VERSION)
 # renovate: datasource=go depName=sigs.k8s.io/controller-runtime
 ENVTEST_VERSION ?= release-0.20
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
@@ -220,6 +230,11 @@ $(KUSTOMIZE): $(LOCALBIN)
 controller-gen: $(CONTROLLER_GEN)
 $(CONTROLLER_GEN): $(LOCALBIN)
 	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
+
+.PHONY: client-gen
+client-gen: $(CLIENT_GEN)
+$(CLIENT_GEN): $(LOCALBIN)
+	$(call go-install-tool,$(CLIENT_GEN),k8s.io/code-generator/cmd/client-gen,$(CLIENT_GEN_VERSION))
 
 .PHONY: envtest
 envtest: $(ENVTEST)

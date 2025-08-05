@@ -14,6 +14,7 @@ const (
 	TypeDeployed api.ConditionType = "Deployed"
 )
 
+// +genclient
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:shortName=buildkit
 // +kubebuilder:subresource:status
