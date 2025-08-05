@@ -74,7 +74,7 @@ func (v *BuildkitTemplateValidator) validate(obj runtime.Object) (admission.Warn
 	if len(errorList) > 0 {
 		return nil, apierrors.NewInvalid(
 			schema.GroupKind{
-				Group: v1alpha1.GroupVersion.Group,
+				Group: v1alpha1.SchemeGroupVersion.Group,
 				Kind:  "BuildkitTemplate",
 			},
 			bkt.Name,
