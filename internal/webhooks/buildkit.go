@@ -62,7 +62,7 @@ func (v *BuildkitValidator) ValidateCreate(ctx context.Context, obj runtime.Obje
 	if len(errorList) > 0 {
 		return nil, apierrors.NewInvalid(
 			schema.GroupKind{
-				Group: v1alpha1.GroupVersion.Group,
+				Group: v1alpha1.SchemeGroupVersion.Group,
 				Kind:  "Buildkit",
 			},
 			bk.Name,

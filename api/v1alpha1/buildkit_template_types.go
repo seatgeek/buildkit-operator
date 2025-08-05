@@ -12,6 +12,7 @@ import (
 
 const BuildkitTemplateNameMaxLength = 57
 
+// +genclient
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:shortName=buildkittemplate
 // +kubebuilder:subresource:status
