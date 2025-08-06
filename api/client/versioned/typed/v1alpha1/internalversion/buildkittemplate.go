@@ -40,7 +40,7 @@ type buildkitTemplates struct {
 }
 
 // newBuildkitTemplates returns a BuildkitTemplates
-func newBuildkitTemplates(c *V1alpha1Client, namespace string) *buildkitTemplates {
+func newBuildkitTemplates(c *BuildkitClient, namespace string) *buildkitTemplates {
 	return &buildkitTemplates{
 		gentype.NewClientWithList[*v1alpha1.BuildkitTemplate, *v1alpha1.BuildkitTemplateList](
 			"buildkittemplates",

@@ -9,29 +9,29 @@ import (
 	rest "k8s.io/client-go/rest"
 )
 
-type V1alpha1Interface interface {
+type BuildkitInterface interface {
 	RESTClient() rest.Interface
 	BuildkitsGetter
 	BuildkitTemplatesGetter
 }
 
-// V1alpha1Client is used to interact with features provided by the v1alpha1 group.
-type V1alpha1Client struct {
+// BuildkitClient is used to interact with features provided by the buildkit.seatgeek.io group.
+type BuildkitClient struct {
 	restClient rest.Interface
 }
 
-func (c *V1alpha1Client) Buildkits(namespace string) BuildkitInterface {
+func (c *BuildkitClient) Buildkits(namespace string) BuildkitInterface {
 	return newBuildkits(c, namespace)
 }
 
-func (c *V1alpha1Client) BuildkitTemplates(namespace string) BuildkitTemplateInterface {
+func (c *BuildkitClient) BuildkitTemplates(namespace string) BuildkitTemplateInterface {
 	return newBuildkitTemplates(c, namespace)
 }
 
-// NewForConfig creates a new V1alpha1Client for the given config.
+// NewForConfig creates a new BuildkitClient for the given config.
 // NewForConfig is equivalent to NewForConfigAndClient(c, httpClient),
 // where httpClient was generated with rest.HTTPClientFor(c).
-func NewForConfig(c *rest.Config) (*V1alpha1Client, error) {
+func NewForConfig(c *rest.Config) (*BuildkitClient, error) {
 	config := *c
 	if err := setConfigDefaults(&config); err != nil {
 		return nil, err
@@ -43,9 +43,9 @@ func NewForConfig(c *rest.Config) (*V1alpha1Client, error) {
 	return NewForConfigAndClient(&config, httpClient)
 }
 
-// NewForConfigAndClient creates a new V1alpha1Client for the given config and http client.
+// NewForConfigAndClient creates a new BuildkitClient for the given config and http client.
 // Note the http client provided takes precedence over the configured transport values.
-func NewForConfigAndClient(c *rest.Config, h *http.Client) (*V1alpha1Client, error) {
+func NewForConfigAndClient(c *rest.Config, h *http.Client) (*BuildkitClient, error) {
 	config := *c
 	if err := setConfigDefaults(&config); err != nil {
 		return nil, err
@@ -54,12 +54,12 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*V1alpha1Client, err
 	if err != nil {
 		return nil, err
 	}
-	return &V1alpha1Client{client}, nil
+	return &BuildkitClient{client}, nil
 }
 
-// NewForConfigOrDie creates a new V1alpha1Client for the given config and
+// NewForConfigOrDie creates a new BuildkitClient for the given config and
 // panics if there is an error in the config.
-func NewForConfigOrDie(c *rest.Config) *V1alpha1Client {
+func NewForConfigOrDie(c *rest.Config) *BuildkitClient {
 	client, err := NewForConfig(c)
 	if err != nil {
 		panic(err)
@@ -67,9 +67,9 @@ func NewForConfigOrDie(c *rest.Config) *V1alpha1Client {
 	return client
 }
 
-// New creates a new V1alpha1Client for the given RESTClient.
-func New(c rest.Interface) *V1alpha1Client {
-	return &V1alpha1Client{c}
+// New creates a new BuildkitClient for the given RESTClient.
+func New(c rest.Interface) *BuildkitClient {
+	return &BuildkitClient{c}
 }
 
 func setConfigDefaults(config *rest.Config) error {
@@ -77,8 +77,8 @@ func setConfigDefaults(config *rest.Config) error {
 	if config.UserAgent == "" {
 		config.UserAgent = rest.DefaultKubernetesUserAgent()
 	}
-	if config.GroupVersion == nil || config.GroupVersion.Group != scheme.Scheme.PrioritizedVersionsForGroup("v1alpha1")[0].Group {
-		gv := scheme.Scheme.PrioritizedVersionsForGroup("v1alpha1")[0]
+	if config.GroupVersion == nil || config.GroupVersion.Group != scheme.Scheme.PrioritizedVersionsForGroup("buildkit.seatgeek.io")[0].Group {
+		gv := scheme.Scheme.PrioritizedVersionsForGroup("buildkit.seatgeek.io")[0]
 		config.GroupVersion = &gv
 	}
 	config.NegotiatedSerializer = rest.CodecFactoryForGeneratedClient(scheme.Scheme, scheme.Codecs)
@@ -95,7 +95,7 @@ func setConfigDefaults(config *rest.Config) error {
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *V1alpha1Client) RESTClient() rest.Interface {
+func (c *BuildkitClient) RESTClient() rest.Interface {
 	if c == nil {
 		return nil
 	}

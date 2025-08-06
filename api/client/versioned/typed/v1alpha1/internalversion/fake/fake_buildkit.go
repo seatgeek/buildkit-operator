@@ -11,10 +11,10 @@ import (
 // fakeBuildkits implements BuildkitInterface
 type fakeBuildkits struct {
 	*gentype.FakeClientWithList[*v1alpha1.Buildkit, *v1alpha1.BuildkitList]
-	Fake *FakeV1alpha1
+	Fake *FakeBuildkit
 }
 
-func newFakeBuildkits(fake *FakeV1alpha1, namespace string) internalversion.BuildkitInterface {
+func newFakeBuildkits(fake *FakeBuildkit, namespace string) internalversion.BuildkitInterface {
 	return &fakeBuildkits{
 		gentype.NewFakeClientWithList[*v1alpha1.Buildkit, *v1alpha1.BuildkitList](
 			fake.Fake,

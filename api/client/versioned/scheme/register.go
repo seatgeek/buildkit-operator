@@ -3,7 +3,7 @@
 package scheme
 
 import (
-	v1alpha1 "github.com/seatgeek/buildkit-operator/api/v1alpha1/install"
+	buildkit "github.com/seatgeek/buildkit-operator/api/v1alpha1/install"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -21,5 +21,5 @@ func init() {
 
 // Install registers the API group and adds types to a scheme
 func Install(scheme *runtime.Scheme) {
-	v1alpha1.Install(scheme)
+	buildkit.Install(scheme)
 }

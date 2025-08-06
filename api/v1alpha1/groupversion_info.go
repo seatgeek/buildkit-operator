@@ -2,8 +2,6 @@
 //
 // Licensed under the terms of the Apache-2.0 license. See LICENSE file in project root for terms.
 
-// +kubebuilder:object:generate=true
-// +groupName=buildkit.seatgeek.io
 package v1alpha1
 
 import (

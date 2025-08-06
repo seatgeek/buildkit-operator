@@ -4,8 +4,8 @@ package fake
 
 import (
 	clientset "github.com/seatgeek/buildkit-operator/api/client/versioned"
-	v1alpha1internalversion "github.com/seatgeek/buildkit-operator/api/client/versioned/typed/v1alpha1/internalversion"
-	fakev1alpha1internalversion "github.com/seatgeek/buildkit-operator/api/client/versioned/typed/v1alpha1/internalversion/fake"
+	buildkitinternalversion "github.com/seatgeek/buildkit-operator/api/client/versioned/typed/v1alpha1/internalversion"
+	fakebuildkitinternalversion "github.com/seatgeek/buildkit-operator/api/client/versioned/typed/v1alpha1/internalversion/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -67,7 +67,7 @@ var (
 	_ testing.FakeClient  = &Clientset{}
 )
 
-// V1alpha1 retrieves the V1alpha1Client
-func (c *Clientset) V1alpha1() v1alpha1internalversion.V1alpha1Interface {
-	return &fakev1alpha1internalversion.FakeV1alpha1{Fake: &c.Fake}
+// Buildkit retrieves the BuildkitClient
+func (c *Clientset) Buildkit() buildkitinternalversion.BuildkitInterface {
+	return &fakebuildkitinternalversion.FakeBuildkit{Fake: &c.Fake}
 }
