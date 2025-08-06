@@ -9,13 +9,20 @@ clean:
 
 .PHONY: lint
 lint: golangci-lint
-	$(GOLANGCI_LINT) run ./...
+	$(GOLANGCI_LINT) run ./... ./api/...
 
 .PHONY: lint-fix
 lint-fix: golangci-lint goimports-reviser
-	$(GOIMPORTS_REVISER) -rm-unused -set-alias -format -company-prefixes github.com/seatgeek/buildkit-operator ./...
-	$(GOLANGCI_LINT) run --fix ./...
+	$(GOIMPORTS_REVISER) -rm-unused -set-alias -format -company-prefixes github.com/seatgeek/buildkit-operator ./... ./api/...
+	$(GOLANGCI_LINT) run --fix ./... ./api/...
+	make tidy
+
+.PHONY: tidy
+tidy:
 	go mod tidy
+	cd api && go mod tidy
+	go work sync
+	go mod download
 
 .PHONY: generate
 generate: controller-gen client-gen yq

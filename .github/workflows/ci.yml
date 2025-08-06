@@ -13,9 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go
-      - run: go mod tidy
+      - run: make tidy
       - run: |
-          git diff --exit-code --quiet go.mod go.sum || (echo "go.mod or go.sum is out of date. Please run 'go mod tidy' and commit the changes." && exit 1)
+          git diff --exit-code --quiet go.mod go.sum || (echo "go.mod or go.sum is out of date. Please run 'make tidy' and commit the changes." && exit 1)
+          git diff --exit-code --quiet api/go.mod api/go.sum || (echo "api/go.mod or api/go.sum is out of date. Please run 'make tidy' and commit the changes." && exit 1)
+          git diff --exit-code --quiet go.work.sum || (echo "go.work.sum is out of date. Please run 'make tidy' and commit the changes." && exit 1)
 
   lint:
     runs-on: ubuntu-latest
