@@ -9,11 +9,11 @@ WORKDIR /workspace
 # Install dependencies
 COPY go.mod go.mod
 COPY go.sum go.sum
+COPY api/ api/
 RUN --mount=type=cache,target=/root/go/pkg/ \
     go mod download -x
 
 # Copy the source code
-COPY api/ api/
 COPY cmd/ cmd/
 COPY internal/ internal/
 
