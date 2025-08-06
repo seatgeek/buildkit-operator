@@ -6,7 +6,7 @@ import (
 	fmt "fmt"
 	http "net/http"
 
-	v1alpha1internalversion "github.com/seatgeek/buildkit-operator/api/client/versioned/typed/v1alpha1/internalversion"
+	buildkitv1alpha1 "github.com/seatgeek/buildkit-operator/api/client/versioned/typed/api/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -14,18 +14,18 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	V1alpha1() v1alpha1internalversion.V1alpha1Interface
+	BuildkitV1alpha1() buildkitv1alpha1.BuildkitV1alpha1Interface
 }
 
 // Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	v1alpha1 *v1alpha1internalversion.V1alpha1Client
+	buildkitV1alpha1 *buildkitv1alpha1.BuildkitV1alpha1Client
 }
 
-// V1alpha1 retrieves the V1alpha1Client
-func (c *Clientset) V1alpha1() v1alpha1internalversion.V1alpha1Interface {
-	return c.v1alpha1
+// BuildkitV1alpha1 retrieves the BuildkitV1alpha1Client
+func (c *Clientset) BuildkitV1alpha1() buildkitv1alpha1.BuildkitV1alpha1Interface {
+	return c.buildkitV1alpha1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -72,7 +72,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 
 	var cs Clientset
 	var err error
-	cs.v1alpha1, err = v1alpha1internalversion.NewForConfigAndClient(&configShallowCopy, httpClient)
+	cs.buildkitV1alpha1, err = buildkitv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.v1alpha1 = v1alpha1internalversion.New(c)
+	cs.buildkitV1alpha1 = buildkitv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

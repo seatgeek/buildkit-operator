@@ -3,7 +3,7 @@
 package fake
 
 import (
-	internalversion "github.com/seatgeek/buildkit-operator/api/client/versioned/typed/v1alpha1/internalversion"
+	apiv1alpha1 "github.com/seatgeek/buildkit-operator/api/client/versioned/typed/api/v1alpha1"
 	v1alpha1 "github.com/seatgeek/buildkit-operator/api/v1alpha1"
 	gentype "k8s.io/client-go/gentype"
 )
@@ -11,10 +11,10 @@ import (
 // fakeBuildkitTemplates implements BuildkitTemplateInterface
 type fakeBuildkitTemplates struct {
 	*gentype.FakeClientWithList[*v1alpha1.BuildkitTemplate, *v1alpha1.BuildkitTemplateList]
-	Fake *FakeV1alpha1
+	Fake *FakeBuildkitV1alpha1
 }
 
-func newFakeBuildkitTemplates(fake *FakeV1alpha1, namespace string) internalversion.BuildkitTemplateInterface {
+func newFakeBuildkitTemplates(fake *FakeBuildkitV1alpha1, namespace string) apiv1alpha1.BuildkitTemplateInterface {
 	return &fakeBuildkitTemplates{
 		gentype.NewFakeClientWithList[*v1alpha1.BuildkitTemplate, *v1alpha1.BuildkitTemplateList](
 			fake.Fake,

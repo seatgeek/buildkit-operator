@@ -3,26 +3,26 @@
 package fake
 
 import (
-	internalversion "github.com/seatgeek/buildkit-operator/api/client/versioned/typed/v1alpha1/internalversion"
+	v1alpha1 "github.com/seatgeek/buildkit-operator/api/client/versioned/typed/api/v1alpha1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )
 
-type FakeV1alpha1 struct {
+type FakeBuildkitV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeV1alpha1) Buildkits(namespace string) internalversion.BuildkitInterface {
+func (c *FakeBuildkitV1alpha1) Buildkits(namespace string) v1alpha1.BuildkitInterface {
 	return newFakeBuildkits(c, namespace)
 }
 
-func (c *FakeV1alpha1) BuildkitTemplates(namespace string) internalversion.BuildkitTemplateInterface {
+func (c *FakeBuildkitV1alpha1) BuildkitTemplates(namespace string) v1alpha1.BuildkitTemplateInterface {
 	return newFakeBuildkitTemplates(c, namespace)
 }
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *FakeV1alpha1) RESTClient() rest.Interface {
+func (c *FakeBuildkitV1alpha1) RESTClient() rest.Interface {
 	var ret *rest.RESTClient
 	return ret
 }

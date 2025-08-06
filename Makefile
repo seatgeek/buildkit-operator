@@ -36,8 +36,8 @@ generate: controller-gen client-gen yq
 	$(CLIENT_GEN) \
  		--output-dir=api/client \
  		--output-pkg=github.com/seatgeek/buildkit-operator/api/client \
- 		--input-base=github.com/seatgeek/buildkit-operator/api \
- 		--input v1alpha1 \
+		--input-base= \
+		--input github.com/seatgeek/buildkit-operator/api/v1alpha1 \
  		--clientset-name=versioned
 	curl -sL https://raw.githubusercontent.com/seatgeek/buildkit-prestop-script/$(BUILDKIT_PRESTOP_VERSION)/buildkit-prestop.sh -o internal/prestop/buildkit-prestop.sh
 
