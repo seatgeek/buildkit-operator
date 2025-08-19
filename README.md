@@ -180,4 +180,4 @@ You can interact with the cluster either of these ways:
 - `kubectl --kubeconfig ./kind/kubeconfig [command]`
 - `k9s --kubeconfig ./kind/kubeconfig --write`
 
-Congratulations! You are now running the Buildkit Operator locally.
+Congratulations! You are now running buildkit-operator locally.

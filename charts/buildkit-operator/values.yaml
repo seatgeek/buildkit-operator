@@ -2,16 +2,18 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
+# Number of operator replicas to run (for high availability)
 replicaCount: 2
 
+# Container image for the operator
 image:
   repository: ghcr.io/seatgeek/buildkit-operator
-  pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
   # Digest support for immutable deployments (takes precedence over tag)
   # Example: sha256:abcd1234...
   digest: ""
+  pullPolicy: IfNotPresent
 
 imagePullSecrets: []
 nameOverride: ""
