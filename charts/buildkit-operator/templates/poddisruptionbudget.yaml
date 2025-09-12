@@ -1,0 +1,24 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "buildkit-operator.fullname" . }}-controller-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/created-by: buildkit-operator
+    app.kubernetes.io/part-of: buildkit-operator
+    control-plane: controller-manager
+    {{- include "buildkit-operator.labels" . | nindent 4 }}
+spec:
+  {{- if hasKey .Values.podDisruptionBudget "maxUnavailable" }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- else if hasKey .Values.podDisruptionBudget "minAvailable" }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- else }}
+  # Default to minAvailable: 1 if neither is specified
+  minAvailable: 1
+  {{- end }}
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+      {{- include "buildkit-operator.selectorLabels" . | nindent 6 }}
