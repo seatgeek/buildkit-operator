@@ -4,6 +4,10 @@
 
 # Number of operator replicas to run (for high availability)
 replicaCount: 2
+podDisruptionBudget:
+  # Define either 'minAvailable' or 'maxUnavailable', never both.
+  minAvailable: 1
+  # maxUnavailable: 1 # If set, 'minAvailable' is ignored.
 
 # Container image for the operator
 image:

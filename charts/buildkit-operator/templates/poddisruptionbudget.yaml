@@ -10,7 +10,11 @@ metadata:
     control-plane: controller-manager
     {{- include "buildkit-operator.labels" . | nindent 4 }}
 spec:
-  maxUnavailable: 1
+  {{- if and .Values.podDisruptionBudget.minAvailable (not (hasKey .Values.podDisruptionBudget "maxUnavailable")) }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- else if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
   selector:
     matchLabels:
       control-plane: controller-manager
