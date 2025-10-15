@@ -217,7 +217,7 @@ GOIMPORTS_REVISER ?= $(LOCALBIN)/goimports-reviser-$(GOIMPORTS_REVISER_VERSION)
 GOLANGCI_LINT_VERSION ?= v2.1.6
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 # renovate: datasource=go depName=gotest.tools/gotestsum
-GOTESTSUM_VERSION ?= v1.12.3
+GOTESTSUM_VERSION ?= v1.13.0
 GOTESTSUM = $(LOCALBIN)/gotestsum-$(GOTESTSUM_VERSION)
 # renovate: datasource=go depName=github.com/boumenot/gocover-cobertura
 GOCOVER_COBERTURA_VERSION ?= v1.3.0
