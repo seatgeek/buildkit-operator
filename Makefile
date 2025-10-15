@@ -198,7 +198,7 @@ endef
 
 ## Tool Binaries and Versions
 # renovate: datasource=go depName=github.com/kubernetes-sigs/kustomize/kustomize
-KUSTOMIZE_VERSION ?= v5.6.0
+KUSTOMIZE_VERSION ?= v5.7.1
 KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 # renovate: datasource=go depName=sigs.k8s.io/controller-tools
 CONTROLLER_TOOLS_VERSION ?= v0.16.5
