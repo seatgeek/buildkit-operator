@@ -7,7 +7,7 @@ replace github.com/seatgeek/buildkit-operator/api => ./api
 require (
 	github.com/fgrosse/zaptest v1.2.1
 	github.com/hexops/autogold/v2 v2.3.0
-	github.com/onsi/ginkgo/v2 v2.25.1
+	github.com/onsi/ginkgo/v2 v2.26.0
 	github.com/onsi/gomega v1.38.2
 	github.com/prometheus/client_golang v1.22.0
 	github.com/reddit/achilles-sdk v0.13.9
