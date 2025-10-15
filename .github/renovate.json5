@@ -69,6 +69,11 @@
       "matchUpdateTypes": ["minor", "patch", "digest"],
       "automerge": true,
       "minimumReleaseAge": "3 days",
-    }
+    },
+    {
+      "description": "Group yq updates together",
+      "matchPackageNames": ["/\\bmikefarah\\/yq\\b" ],
+      "groupName": "mikefarah/yq",
+    },
   ],
 }
