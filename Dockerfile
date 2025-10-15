@@ -1,5 +1,5 @@
 # Build the operator binary
-FROM golang:1.24.3-alpine3.21 AS builder
+FROM golang:1.25.3-alpine3.21 AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
