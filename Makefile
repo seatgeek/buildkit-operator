@@ -220,7 +220,7 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 GOTESTSUM_VERSION ?= v1.13.0
 GOTESTSUM = $(LOCALBIN)/gotestsum-$(GOTESTSUM_VERSION)
 # renovate: datasource=go depName=github.com/boumenot/gocover-cobertura
-GOCOVER_COBERTURA_VERSION ?= v1.3.0
+GOCOVER_COBERTURA_VERSION ?= v1.4.0
 GOCOVER_COBERTURA = $(LOCALBIN)/gocover-cobertura-$(GOCOVER_COBERTURA_VERSION)
 # renovate: datasource=go depName=github.com/mikefarah/yq/v4
 YQ_VERSION ?= v4.48.1
