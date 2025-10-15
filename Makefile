@@ -271,4 +271,4 @@ $(GOCOVER_COBERTURA): $(LOCALBIN)
 .PHONY: yq
 yq: $(YQ)
 $(YQ): $(LOCALBIN)
-	$(call go-install-tool,$(YQ),github.com/mikefarah/yq/v3,$(YQ_VERSION))
+	$(call go-install-tool,$(YQ),github.com/mikefarah/yq/v4,$(YQ_VERSION))
