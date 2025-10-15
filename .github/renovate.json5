@@ -53,7 +53,8 @@
       "description": "Auto-merge non-major test deps (file-based)",
       "matchFileNames": [
         "Makefile",
-        ".github/**/*.yml"
+        ".github/**/*.yml",
+        ".github/**/*.yaml"
       ],
       "matchUpdateTypes": ["minor", "patch", "digest"],
       "automerge": true,
