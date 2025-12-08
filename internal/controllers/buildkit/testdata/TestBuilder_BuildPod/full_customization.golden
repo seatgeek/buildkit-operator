@@ -43,6 +43,7 @@ spec:
     - name: OTEL_RESOURCE_ATTRIBUTES
       value: service.name=custom-buildkit-service,deployment.environment=ci
     image: moby/buildkit:latest
+    imagePullPolicy: IfNotPresent
     lifecycle:
       preStop:
         exec:
