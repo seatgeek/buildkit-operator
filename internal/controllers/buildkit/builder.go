@@ -60,8 +60,9 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:  buildkitContainerName,
-					Image: template.Spec.Image,
+					Name:            buildkitContainerName,
+					Image:           template.Spec.Image,
+					ImagePullPolicy: template.Spec.ImagePullPolicy,
 					VolumeMounts: []corev1.VolumeMount{
 						{
 							Name:      "buildkitd",

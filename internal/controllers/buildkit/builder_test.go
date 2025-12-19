@@ -220,10 +220,11 @@ func TestBuilder_BuildPod(t *testing.T) {
 					PodAnnotations: map[string]string{
 						"template.example.com/config": "enabled",
 					},
-					Rootless:      true,
-					Port:          4567,
-					BuildkitdToml: "[worker.oci]\n  enabled = true\n",
-					Image:         "moby/buildkit:latest",
+					Rootless:        true,
+					Port:            4567,
+					BuildkitdToml:   "[worker.oci]\n  enabled = true\n",
+					Image:           "moby/buildkit:latest",
+					ImagePullPolicy: corev1.PullIfNotPresent,
 					Resources: v1alpha1.BuildkitTemplateResources{
 						Maximum: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("2000m"),
