@@ -1,79 +1,93 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    "mergeConfidence:all-badges",
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    'mergeConfidence:all-badges',
   ],
-
-  "prConcurrentLimit": 5,
-  "prHourlyLimit": 2,
-
-  "dependencyDashboard": true,
-  "osvVulnerabilityAlerts": true,
-  "dependencyDashboardOSVVulnerabilitySummary": "all",
-  "vulnerabilityAlerts": {
-    "labels": [
-      "security"
-    ]
-  },
-
-  "reviewers": ["team:developer-experience"],
-  "reviewersSampleSize": 1,
-
-  "gomod": {
-    "postUpdateOptions": [
-      "gomodUpdateImportPaths",
-      "gomodTidy",
+  prConcurrentLimit: 5,
+  prHourlyLimit: 2,
+  dependencyDashboard: true,
+  osvVulnerabilityAlerts: true,
+  dependencyDashboardOSVVulnerabilitySummary: 'all',
+  vulnerabilityAlerts: {
+    labels: [
+      'security',
     ],
   },
-  "customManagers": [
+  reviewers: [
+    'team:developer-experience',
+  ],
+  reviewersSampleSize: 1,
+  gomod: {
+    postUpdateOptions: [
+      'gomodUpdateImportPaths',
+      'gomodTidy',
+    ],
+  },
+  customManagers: [
     {
-      "customType": "regex",
-      "fileMatch": [
-        "^Makefile$",
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^Makefile$/',
       ],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z-.]+?) depName=(?<depName>[^\\s]+?)(?: (lookupName|packageName)=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?(?: registryUrl=(?<registryUrl>[^\\s]+?))?\\n[^\\s]+?_VERSION\\s*\\??=\\s*\"?(?<currentValue>.+?)\"?\\n",
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>[a-z-.]+?) depName=(?<depName>[^\\s]+?)(?: (lookupName|packageName)=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?(?: registryUrl=(?<registryUrl>[^\\s]+?))?\\n[^\\s]+?_VERSION\\s*\\??=\\s*"?(?<currentValue>.+?)"?\\n',
       ],
     },
   ],
-
-  "packageRules": [
+  packageRules: [
     {
-      "description": "Don't bother with replaced internal package",
-      "matchPackageNames": ["github.com/seatgeek/buildkit-operator/api"],
-      "enabled": false
-    },
-    {
-      "description": "Limit noisy updates to once per week",
-      "matchUpdateTypes": ["digest", "lockFileMaintenance"],
-      "extends": ["schedule:weekly"]
-    },
-    {
-      "description": "Auto-merge non-major test deps (file-based)",
-      "matchFileNames": [
-        "Makefile",
-        ".github/**/*.yml",
-        ".github/**/*.yaml"
+      description: "Don't bother with replaced internal package",
+      matchPackageNames: [
+        'github.com/seatgeek/buildkit-operator/api',
       ],
-      "matchUpdateTypes": ["minor", "patch", "digest"],
-      "automerge": true,
-      "minimumReleaseAge": "3 days",
+      enabled: false,
     },
     {
-      "description": "Auto-merge non-major test deps (package-based)",
-      "matchPackageNames": [
-        "github.com/onsi/ginkgo/v2",
-        "github.com/onsi/gomega",
+      description: 'Limit noisy updates to once per week',
+      matchUpdateTypes: [
+        'digest',
+        'lockFileMaintenance',
       ],
-      "matchUpdateTypes": ["minor", "patch", "digest"],
-      "automerge": true,
-      "minimumReleaseAge": "3 days",
+      extends: [
+        'schedule:weekly',
+      ],
     },
     {
-      "description": "Group yq updates together",
-      "matchPackageNames": ["/\\bmikefarah\\/yq\\b" ],
-      "groupName": "mikefarah/yq",
+      description: 'Auto-merge non-major test deps (file-based)',
+      matchFileNames: [
+        'Makefile',
+        '.github/**/*.yml',
+        '.github/**/*.yaml',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+        'digest',
+      ],
+      automerge: true,
+      minimumReleaseAge: '3 days',
+    },
+    {
+      description: 'Auto-merge non-major test deps (package-based)',
+      matchPackageNames: [
+        'github.com/onsi/ginkgo/v2',
+        'github.com/onsi/gomega',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+        'digest',
+      ],
+      automerge: true,
+      minimumReleaseAge: '3 days',
+    },
+    {
+      description: 'Group yq updates together',
+      matchPackageNames: [
+        '/\\bmikefarah\\/yq\\b',
+      ],
+      groupName: 'mikefarah/yq',
     },
   ],
 }
