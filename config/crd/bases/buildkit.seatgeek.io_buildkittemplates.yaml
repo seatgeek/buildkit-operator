@@ -47,6 +47,17 @@ spec:
                 items:
                   type: string
                 type: array
+              hostUsers:
+                default: true
+                description: |-
+                  HostUsers defines if the host's user namespace should be used
+                  If set to true or not present, the pod will be run in the host user namespace, useful
+                  for when the pod needs a feature only available to the host user namespace, such as
+                  loading a kernel module with CAP_SYS_MODULE.
+                  When set to false, a new userns is created for the pod. Setting false is useful for
+                  mitigating container breakout vulnerabilities even allowing users to run their
+                  containers as root without actually having root privileges on the host.
+                type: boolean
               image:
                 default: moby/buildkit:latest
                 description: Image is the container image to use for the Buildkit

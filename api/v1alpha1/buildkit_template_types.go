@@ -73,6 +73,17 @@ type BuildkitTemplateSpec struct {
 	// Observability defines the observability settings for the Buildkit pods
 	// +kubebuilder:validation:Optional
 	Observability BuildkitTemplateObservability `json:"observability,omitempty"`
+
+	// HostUsers defines if the host's user namespace should be used
+	// If set to true or not present, the pod will be run in the host user namespace, useful
+	// for when the pod needs a feature only available to the host user namespace, such as
+	// loading a kernel module with CAP_SYS_MODULE.
+	// When set to false, a new userns is created for the pod. Setting false is useful for
+	// mitigating container breakout vulnerabilities even allowing users to run their
+	// containers as root without actually having root privileges on the host.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=true
+	HostUsers *bool `json:"hostUsers,omitempty"`
 }
 
 type BuildkitTemplatePodScheduling struct {

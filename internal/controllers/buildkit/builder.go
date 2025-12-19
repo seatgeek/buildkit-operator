@@ -118,6 +118,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 					},
 				},
 			},
+			HostUsers:                     template.Spec.HostUsers,
 			ServiceAccountName:            template.Spec.ServiceAccountName,
 			NodeSelector:                  template.Spec.Scheduling.NodeSelector,
 			Tolerations:                   template.Spec.Scheduling.Tolerations,
