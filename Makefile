@@ -30,8 +30,11 @@ generate: controller-gen client-gen yq
 	$(CONTROLLER_GEN) rbac:roleName=manager-role paths="{./internal/controllers/...}"
 	$(CONTROLLER_GEN) object paths="{./api/...}"
 	cp config/webhook/manifests.yaml kind/webhook/manifests.yaml
-	rm charts/buildkit-operator/crds/*
-	cp config/crd/bases/*.yaml charts/buildkit-operator/crds/
+	rm -rf charts/buildkit-operator/templates/crd-*
+	for crd in config/crd/bases/*.yaml; do \
+		printf "{{- if .Values.crds.install }}\n%s\n{{- end }}\n" "$$(cat $$crd)" \
+			> "charts/buildkit-operator/templates/crd-$$(basename "$${crd}")"; \
+	done
 	rm -rf api/client
 	$(CLIENT_GEN) \
  		--output-dir=api/client \
