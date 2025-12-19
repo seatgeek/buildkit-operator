@@ -7,7 +7,7 @@ replace github.com/seatgeek/buildkit-operator/api => ./api
 require (
 	github.com/fgrosse/zaptest v1.2.1
 	github.com/hexops/autogold/v2 v2.3.0
-	github.com/onsi/ginkgo/v2 v2.25.1
+	github.com/onsi/ginkgo/v2 v2.27.3
 	github.com/onsi/gomega v1.38.2
 	github.com/prometheus/client_golang v1.22.0
 	github.com/reddit/achilles-sdk v0.13.9
@@ -35,7 +35,6 @@ require (
 	github.com/nightlyone/lockfile v1.0.0 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	mvdan.cc/gofumpt v0.7.0 // indirect
