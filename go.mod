@@ -5,7 +5,7 @@ go 1.24.3
 replace github.com/seatgeek/buildkit-operator/api => ./api
 
 require (
-	github.com/fgrosse/zaptest v1.2.1
+	github.com/fgrosse/zaptest v1.3.0
 	github.com/hexops/autogold/v2 v2.3.0
 	github.com/onsi/ginkgo/v2 v2.27.3
 	github.com/onsi/gomega v1.38.2
