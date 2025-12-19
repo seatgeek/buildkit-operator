@@ -137,29 +137,28 @@ echo ""
 echo "🔍 Validating CRDs..."
 
 # Compare each CRD file
-CRD_CHART_DIR="$CHART_PATH/crds"
 for source_crd in "$CRD_SOURCE_DIR"/*.yaml; do
     crd_filename=$(basename "$source_crd")
-    chart_crd="$CRD_CHART_DIR/$crd_filename"
+    chart_crd="$CHART_PATH/templates/crd-$crd_filename"
 
     if [[ ! -f "$chart_crd" ]]; then
-        echo "❌ CRD file $crd_filename not found in chart directory!"
+        echo "❌ CRD file $crd_filename not found in chart directory ($chart_crd)!"
         exit 1
     fi
 
     echo "Comparing $crd_filename..."
 
-    # Compare CRD content (should be identical since we copy them directly in make generate)
-    if ! diff -u "$source_crd" "$chart_crd"; then
+    # Compare CRD content (ignore conditional helm template wrapper)
+    if ! diff -I '^{{-' -u "$source_crd" "$chart_crd"; then
         echo "❌ CRD $crd_filename doesn't match between source and chart!"
         exit 1
     fi
 done
 
 # Check for extra CRD files in chart directory
-for chart_crd in "$CRD_CHART_DIR"/*.yaml; do
+for chart_crd in "$CHART_PATH"/templates/crd-*.yaml; do
     crd_filename=$(basename "$chart_crd")
-    source_crd="$CRD_SOURCE_DIR/$crd_filename"
+    source_crd="$CRD_SOURCE_DIR/${crd_filename#crd-}"
 
     if [[ ! -f "$source_crd" ]]; then
         echo "❌ Extra CRD file $crd_filename found in chart directory but not in source!"
