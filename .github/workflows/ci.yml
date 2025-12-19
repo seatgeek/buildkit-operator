@@ -11,7 +11,7 @@ jobs:
   go-mod-tidy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-go
       - run: make tidy
       - run: |
@@ -22,7 +22,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-go
       - run: make lint || (echo "::notice Run 'make lint-fix' locally to fix this" && exit 1)
 
@@ -32,7 +32,7 @@ jobs:
       checks: write  # for mikepenz/action-junit-report to update checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-go
 
       - run: make test-with-coverage
@@ -57,7 +57,7 @@ jobs:
   validate-manifests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-go
       - uses: mikefarah/yq@v4.48.1
       - uses: azure/setup-helm@v4
@@ -81,7 +81,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-go
 
       - name: Download dependencies
@@ -138,7 +138,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: azure/setup-helm@v4
         with:
           version: '3.14.0'
