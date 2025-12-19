@@ -180,6 +180,29 @@ func TestBuilder_BuildPod(t *testing.T) {
 			},
 		},
 		{
+			name: "hostusers false",
+			buildkit: &v1alpha1.Buildkit{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-buildkit",
+					Namespace: "test-ns",
+				},
+				Spec: v1alpha1.BuildkitSpec{
+					Template: "test-template",
+				},
+			},
+			template: &v1alpha1.BuildkitTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-template",
+					Namespace: "test-ns",
+				},
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:      1234,
+					Image:     "moby/buildkit:latest",
+					HostUsers: new(bool),
+				},
+			},
+		},
+		{
 			name: "full customization",
 			buildkit: &v1alpha1.Buildkit{
 				ObjectMeta: metav1.ObjectMeta{
