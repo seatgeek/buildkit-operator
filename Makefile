@@ -214,7 +214,7 @@ ENVTEST_K8S_VERSION = 1.32
 GOIMPORTS_REVISER_VERSION ?= v3.11.0
 GOIMPORTS_REVISER ?= $(LOCALBIN)/goimports-reviser-$(GOIMPORTS_REVISER_VERSION)
 # renovate: datasource=go depName=github.com/golangci/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.7.2
+GOLANGCI_LINT_VERSION ?= v2.8.0
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 # renovate: datasource=go depName=gotest.tools/gotestsum
 GOTESTSUM_VERSION ?= v1.13.0
