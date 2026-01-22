@@ -10,7 +10,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.27.3
 	github.com/onsi/gomega v1.38.3
 	github.com/prometheus/client_golang v1.23.2
-	github.com/reddit/achilles-sdk v0.13.10
+	github.com/reddit/achilles-sdk v0.13.11
 	github.com/reddit/achilles-sdk-api v1.1.1
 	github.com/seatgeek/buildkit-operator/api v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.10.2
