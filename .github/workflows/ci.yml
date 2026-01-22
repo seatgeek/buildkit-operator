@@ -43,14 +43,14 @@ jobs:
           report_paths: '**/build/reports/unit-tests.xml'
 
       - name: Upload test results to Codecov
-        if: ${{ !cancelled() && secrets.CODECOV_TOKEN != '' }}
+        if: ${{ !cancelled() && github.event.pull_request.head.repo.full_name == github.repository }}
         uses: codecov/test-results-action@v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./build/reports/unit-tests.xml
 
       - uses: codecov/codecov-action@v5.5.2
-        if: ${{ secrets.CODECOV_TOKEN != '' }}
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./build/reports/coverage.out
