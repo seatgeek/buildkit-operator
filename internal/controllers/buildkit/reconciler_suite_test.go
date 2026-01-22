@@ -1,4 +1,4 @@
-// Copyright 2025 SeatGeek, Inc.
+// Copyright 2026 SeatGeek, Inc.
 //
 // Licensed under the terms of the Apache-2.0 license. See LICENSE file in project root for terms.
 
