@@ -204,7 +204,7 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 CONTROLLER_TOOLS_VERSION ?= v0.16.5
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 # renovate: datasource=go depName=k8s.io/code-generator
-CLIENT_GEN_VERSION ?= v0.32.7
+CLIENT_GEN_VERSION ?= v0.35.0
 CLIENT_GEN ?= $(LOCALBIN)/client-gen-$(CLIENT_GEN_VERSION)
 # renovate: datasource=go depName=sigs.k8s.io/controller-runtime
 ENVTEST_VERSION ?= release-0.20
