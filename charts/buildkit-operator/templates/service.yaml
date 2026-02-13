@@ -1,0 +1,27 @@
+{{- if and .Values.service.enabled .Values.operator.metrics.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "buildkit-operator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "buildkit-operator.labels" . | nindent 4 }}
+  {{- if or .Values.additionalAnnotations .Values.service.annotations }}
+  annotations:
+  {{- with .Values.additionalAnnotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: {{ .Values.operator.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    {{- include "buildkit-operator.selectorLabels" . | nindent 4 }}
+{{- end }}

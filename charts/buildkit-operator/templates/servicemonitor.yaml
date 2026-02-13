@@ -1,0 +1,43 @@
+{{- if and .Values.operator.metrics.serviceMonitor.enabled .Values.operator.metrics.enabled .Values.service.enabled -}}
+{{- if .Capabilities.APIVersions.Has "monitoring.coreos.com/v1" -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "buildkit-operator.fullname" . | quote }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "buildkit-operator.labels" . | nindent 4 }}
+    {{- with .Values.operator.metrics.serviceMonitor.additionalLabels }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.operator.metrics.serviceMonitor.annotations }}
+    annotations:
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  endpoints:
+  - port: metrics
+    path: /metrics
+    {{- with .Values.operator.metrics.serviceMonitor.relabelings }}
+    relabelings:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.operator.metrics.serviceMonitor.metricRelabelings }}
+    metricRelabelings:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- if .Values.operator.metrics.serviceMonitor.interval }}
+    interval: {{ .Values.operator.metrics.serviceMonitor.interval }}
+    {{- end }}
+  {{- if .Values.operator.metrics.serviceMonitor.jobLabel }}
+  jobLabel: {{ .Values.operator.metrics.serviceMonitor.jobLabel }}
+  {{- end }}
+  namespaceSelector:
+    matchNames:
+      - {{ $.Release.Namespace | quote }}
+  selector:
+    matchLabels:
+        {{- include "buildkit-operator.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- end }}
+
