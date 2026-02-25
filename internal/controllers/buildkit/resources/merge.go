@@ -4,9 +4,11 @@
 
 package resources
 
-import "maps"
+import (
+	"maps"
 
-import corev1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
+)
 
 // ApplyMaximums checks the desired resource requirements against a maximum set of limits.
 // Any desired requests or limits that exceed the maximum limits are reduced to the maximum.
