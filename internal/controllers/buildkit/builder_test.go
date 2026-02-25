@@ -14,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
@@ -273,8 +272,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 						RequireOwner:                  true,
 						PreStopScript:                 true,
 						RestartPolicy:                 corev1.RestartPolicyOnFailure,
-						TerminationGracePeriodSeconds: ptr.To(int64(111)),
-						ActiveDeadlineSeconds:         ptr.To(int64(222)),
+						TerminationGracePeriodSeconds: new(int64(111)),
+						ActiveDeadlineSeconds:         new(int64(222)),
 					},
 					Scheduling: v1alpha1.BuildkitTemplatePodScheduling{
 						NodeSelector: map[string]string{

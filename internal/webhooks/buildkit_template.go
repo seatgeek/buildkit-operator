@@ -15,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -113,7 +112,7 @@ func (b BuildkitTemplateDefaulter) Default(_ context.Context, obj runtime.Object
 	}
 
 	if bkt.Spec.Lifecycle.TerminationGracePeriodSeconds == nil {
-		bkt.Spec.Lifecycle.TerminationGracePeriodSeconds = ptr.To(int64(900)) // 15 minutes
+		bkt.Spec.Lifecycle.TerminationGracePeriodSeconds = new(int64(900)) // 15 minutes
 	}
 
 	if bkt.Spec.Image == "" {

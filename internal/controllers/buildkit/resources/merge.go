@@ -4,6 +4,8 @@
 
 package resources
 
+import "maps"
+
 import corev1 "k8s.io/api/core/v1"
 
 // ApplyMaximums checks the desired resource requirements against a maximum set of limits.
@@ -20,9 +22,7 @@ func ApplyMaximums(maximum corev1.ResourceList, desired ...corev1.ResourceRequir
 			if result.Limits == nil {
 				result.Limits = make(corev1.ResourceList)
 			}
-			for key, value := range current.Limits {
-				result.Limits[key] = value
-			}
+			maps.Copy(result.Limits, current.Limits)
 		}
 
 		// Merge requests (later ones take precedence)
@@ -30,9 +30,7 @@ func ApplyMaximums(maximum corev1.ResourceList, desired ...corev1.ResourceRequir
 			if result.Requests == nil {
 				result.Requests = make(corev1.ResourceList)
 			}
-			for key, value := range current.Requests {
-				result.Requests[key] = value
-			}
+			maps.Copy(result.Requests, current.Requests)
 		}
 	}
 
