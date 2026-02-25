@@ -23,6 +23,7 @@ formatters:
     ## disabled
     #- gofmt # checks if the code is formatted according to 'gofmt' command
     #- golines # checks if code is formatted, and fixes long lines
+    #- swaggo # check if swaggo comments are formatted
 
   settings:
     gci:
@@ -52,6 +53,7 @@ linters:
     - decorder # checks declaration order and count of types, constants, variables and functions
     - dogsled # checks assignments with too many blank identifiers (e.g. x, _, _, _, := f())
     - durationcheck # checks for two durations multiplied together
+    - embeddedstructfieldcheck # embedded types should be first in the struct definition
     - errcheck # checking for unchecked errors, these unchecked errors can be critical bugs in some cases
     - errchkjson # checks types passed to the json encoding functions. Reports unsupported types and optionally reports occasions, where the check for the returned error can be omitted
     - errname # checks that sentinel errors are prefixed with the Err and error types are suffixed with the Error
@@ -66,6 +68,7 @@ linters:
     - gocritic # provides diagnostics that check for bugs, performance and style issues
     - gocyclo # computes and checks the cyclomatic complexity of functions
     - goheader # checks is file header matches to pattern
+    - godoclint # checks Golang's documentation practice (godoc)
     - gomodguard # allow and block lists linter for direct Go module dependencies. This is different from depguard where there are different block types for example version constraints and module recommendations
     - goprintffuncname # checks that printf-like functions are named with f at the end
     - gosec # inspects source code for security problems
@@ -75,12 +78,14 @@ linters:
     - ineffassign # detects when assignments to existing variables are not used
     - interfacebloat # checks the number of methods inside an interface
     - intrange # check for loops that could use int ranges instead (Go 1.22+)
+    - iotamixing # checks for mixing of iota and non-iota constants in the same block
     - ireturn # accept interfaces, return concrete types
     - lll # fast, configurable, extensible, flexible, and beautiful linter for Go, drop-in replacement of golint
     - loggercheck # checks key value pairs for common logger libraries (kitlog,klog,logr,zap)
     - makezero # finds slice declarations with non-zero initial length
     - mirror # suggests alternative functions to avoid unnecessary []byte/string conversions
     - misspell # finds commonly misspelled English words in comments
+    - modernize # suggests simplifications to Go code, using modern language and library features
     - nakedret # finds naked returns in functions greater than a specified function length
     - nestif # reports deeply nested if statements
     - nilerr # finds the code that returns nil even if it checks that the error is not nil
@@ -114,6 +119,7 @@ linters:
     - whitespace # detects leading and trailing whitespace
 
     ## disabled
+    #- arangolint # opinionated best practices for arangodb client
     #- cyclop # checks function and package cyclomatic complexity
     #- depguard # [replaced by gomodguard] checks if package imports are in a list of acceptable packages
     #- dupl # finds duplicated code
@@ -121,6 +127,7 @@ linters:
     #- err113 # [too strict] checks the errors handling expression
     #- exhaustruct # [highly recommend to enable] checks if all structure fields are initialized
     #- forcetypeassert # [replaced by errcheck] finds forced type assertions
+    #- funcorder # checks the order of functions, methods, and constructors
     #- funlen # tool for detection of long functions
     #- gochecknoglobals # checks that no global variables exist
     #- gochecknoinits # checks that no init functions are present in Go code
@@ -136,12 +143,14 @@ linters:
     #- maintidx # measures the maintainability index of each function
     #- mnd # detects magic numbers
     #- musttag # enforce field tags in (un)marshaled structs
+    #- noinlineerr # disallows inline error handling
     #- nonamedreturns # reports all named returns
     #- nlreturn # [too strict and mostly code is not more readable] checks for a new line before return and branch statements to increase code clarity
     #- promlinter # checks Prometheus metrics naming via promlint
     #- stylecheck # is a replacement for golint
     #- tagliatelle # checks the struct tags
     #- testpackage # makes you use a separate _test package
+    #- unqueryvet # checks for SQL issues
     #- usestdlibvars # detects the possibility to use variables/constants from the Go standard library
     #- varnamelen # [great idea, but too many false positives] checks that the length of a variable's name matches its scope
     #- wrapcheck # checks that errors returned from external packages are wrapped
@@ -149,6 +158,10 @@ linters:
     #- zerologlint # [if you use zerolog] detects the wrong usage of zerolog that a user forgets to dispatch with Send or Msg
 
   settings:
+    embeddedstructfieldcheck:
+      empty-line: false
+      forbid-mutex: true
+
     errcheck:
       check-type-assertions: true
       exclude-functions:
@@ -165,6 +178,13 @@ linters:
         Copyright {{YEAR}} SeatGeek, Inc.
 
         Licensed under the terms of the Apache-2.0 license. See LICENSE file in project root for terms.
+    godoclint:
+      default: none
+      enable:
+        - deprecated
+        - require-stdlib-doclink
+        - single-pkg-doc
+
     gomodguard:
       blocked:
         modules:
@@ -232,6 +252,8 @@ linters:
         - name: early-return
           disabled: false
           arguments: [preserveScope]
+        - name: epoch-naming
+          disabled: false
         - name: error-naming
           disabled: false
         - name: error-return
@@ -242,12 +264,18 @@ linters:
           arguments:
             - sayRepetitiveInsteadOfStutters
             - checkPrivateReceivers
+        - name: forbidden-call-in-wg-go
+          disabled: false
         - name: if-return
+          disabled: false
+        - name: inefficient-map-lookup
           disabled: false
         - name: max-control-nesting
           disabled: false
           arguments: [3]
         - name: optimize-operands-order
+          disabled: false
+        - name: package-directory-mismatch
           disabled: false
         - name: range
           disabled: false
@@ -275,13 +303,23 @@ linters:
         - name: unexported-return
           disabled: false
           severity: warning
+        - name: unnecessary-format
+          disabled: false
+        - name: unnecessary-if
+          disabled: false
         - name: unnecessary-stmt
           disabled: false
         - name: unreachable-code
           disabled: false
         - name: use-any
           disabled: false
+        - name: use-fmt-print
+          disabled: false
+        - name: use-slices-sort
+          disabled: false
         - name: useless-break
+          disabled: false
+        - name: useless-fallthrough
           disabled: false
         - name: var-declaration
           disabled: false
