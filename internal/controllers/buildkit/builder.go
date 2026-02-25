@@ -11,7 +11,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
@@ -106,7 +105,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 						FailureThreshold:    6,
 					},
 					SecurityContext: &corev1.SecurityContext{
-						Privileged: ptr.To(true),
+						Privileged: new(true),
 					},
 				},
 			},
@@ -145,8 +144,8 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeUnconfined,
 			},
-			RunAsUser:  ptr.To(int64(1000)),
-			RunAsGroup: ptr.To(int64(1000)),
+			RunAsUser:  new(int64(1000)),
+			RunAsGroup: new(int64(1000)),
 		}
 	}
 
@@ -224,7 +223,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 					LocalObjectReference: corev1.LocalObjectReference{
 						Name: configMap.Name,
 					},
-					DefaultMode: ptr.To(int32(0o755)),
+					DefaultMode: new(int32(0o755)),
 				},
 			},
 		})
