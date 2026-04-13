@@ -83,15 +83,23 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 						},
 					},
 					Resources: resources.WithMaximums(template.Spec.Resources.Maximum, template.Spec.Resources.Default, b.buildkit.Spec.Resources),
+					StartupProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							GRPC: &corev1.GRPCAction{
+								Port: template.Spec.Port,
+							},
+						},
+						PeriodSeconds:    2,
+						FailureThreshold: 15,
+					},
 					ReadinessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
 							GRPC: &corev1.GRPCAction{
 								Port: template.Spec.Port,
 							},
 						},
-						InitialDelaySeconds: 5,
-						PeriodSeconds:       15,
-						FailureThreshold:    2,
+						PeriodSeconds:    15,
+						FailureThreshold: 2,
 					},
 					LivenessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
@@ -99,10 +107,9 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 								Port: template.Spec.Port,
 							},
 						},
-						InitialDelaySeconds: 5,
-						TimeoutSeconds:      3,
-						PeriodSeconds:       30,
-						FailureThreshold:    6,
+						TimeoutSeconds:   3,
+						PeriodSeconds:    30,
+						FailureThreshold: 6,
 					},
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: new(true),
