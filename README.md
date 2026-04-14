@@ -8,6 +8,18 @@
 
 An operator for managing BuildKit instances on Kubernetes.
 
+## Getting Started
+
+Install [mise](https://mise.jdx.dev) for managing tool versions, then:
+
+```bash
+make init    # Install tools (Go, kind, frpc) and download dependencies
+make create  # Create a local Kind cluster
+make run     # Run the operator
+```
+
+Run `make help` to see all available targets.
+
 ## How it Works
 
 First, deploy one or more `BuildkitTemplate` resources that define the configuration and scheduling for BuildKit instances:
@@ -147,15 +159,19 @@ helm uninstall buildkit-operator --namespace buildkit-system
 
 ### Prerequisites
 
-You will need `kind` and `frpc`, which can be installed on macOS with `brew`:
-
-```bash
-brew install kind frpc
-```
+Install [mise](https://mise.jdx.dev) for managing tool versions, then run `make init` to install Go, kind, and frpc automatically.
 
 ### Running the Operator
 
-(Re)start your local kind cluster and run the operator:
+Bootstrap your environment and start a local kind cluster:
+
+```bash
+make init
+make create
+make run
+```
+
+Or to recreate an existing cluster:
 
 ```bash
 make recreate

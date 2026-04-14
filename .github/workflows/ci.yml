@@ -24,7 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-go
-      - run: make lint || (echo "::notice Run 'make lint-fix' locally to fix this" && exit 1)
+      - run: make lint
+      - run: |
+          git diff --exit-code || (echo "::error::Linter made changes. Run 'make lint' locally and commit the results." && exit 1)
 
   test:
     permissions:

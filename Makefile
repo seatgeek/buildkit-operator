@@ -1,31 +1,49 @@
 REPORTS_DIR=build/reports
 
+.DEFAULT_GOAL := help
+
+HIGHLIGHTED_TARGETS := help init test lint build run clean all
+.PHONY: help
+help: ## Show available targets
+	@grep -h -E '^[0-9a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk \
+		-v std="$(HIGHLIGHTED_TARGETS)" \
+		'BEGIN {FS = ":.*?## "; split(std, a, " "); for (i in a) s[a[i]]=1} \
+		{t = $$1; gsub(/^[[:space:]]+/, "", t); \
+		if (t in s) printf "\033[33m%-30s\033[0m %s\n", t, $$2; \
+		else printf "\033[36m%-30s\033[0m %s\n", t, $$2}'
+
+##@ Development
+
 .PHONY: all
-all: clean generate lint test validate-helm-templates build
+all: clean generate lint test validate-helm-templates build ## Run clean, generate, lint, test, validate-helm-templates, and build
+
+.PHONY: init
+init: ## Install tools and bootstrap local development environment
+	mise install
+	go mod download
+	cd api && go mod download
 
 .PHONY: clean
-clean:
+clean: ## Remove build artifacts and tool binaries
 	@rm -rf $(REPORTS_DIR)
+	@rm -rf $(LOCALBIN)
+	@rm -f main
 
 .PHONY: lint
-lint: golangci-lint
-	$(GOLANGCI_LINT) run ./... ./api/...
-
-.PHONY: lint-fix
-lint-fix: golangci-lint goimports-reviser
-	$(GOIMPORTS_REVISER) -rm-unused -set-alias -format -company-prefixes github.com/seatgeek/buildkit-operator ./... ./api/...
+lint: golangci-lint goimports-reviser ## Run linters with auto-fix
+	$(GOIMPORTS_REVISER) -rm-unused -set-alias -format -company-prefixes github.com/seatgeek/buildkit-operator ./...
 	$(GOLANGCI_LINT) run --fix ./... ./api/...
-	make tidy
+	$(MAKE) tidy
 
 .PHONY: tidy
-tidy:
+tidy: ## Run go mod tidy and sync workspace
 	go mod tidy
 	cd api && go mod tidy
 	go work sync
 	go mod download
 
 .PHONY: generate
-generate: controller-gen client-gen yq
+generate: controller-gen client-gen yq ## Generate CRDs, RBAC, clients, and manifests
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="{./api/..., ./internal/webhooks/...}" output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=manager-role paths="{./internal/controllers/...}"
 	$(CONTROLLER_GEN) object paths="{./api/...}"
@@ -42,19 +60,21 @@ generate: controller-gen client-gen yq
 	curl -sL https://raw.githubusercontent.com/seatgeek/buildkit-prestop-script/$(BUILDKIT_PRESTOP_VERSION)/buildkit-prestop.sh -o internal/prestop/buildkit-prestop.sh
 
 .PHONY: validate-helm-templates
-validate-helm-templates: generate yq
+validate-helm-templates: generate yq ## Validate Helm chart templates match generated CRDs
 	./hack/validate-helm-templates.sh
 
+##@ Testing
+
 .PHONY: test
-test: generate envtest
+test: generate envtest ## Run tests
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -v ./...
 
 .PHONY: test-fix
-test-fix: generate envtest
+test-fix: generate envtest ## Run tests and update golden files
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -v ./... -update -clean
 
 .PHONY: test-with-coverage
-test-with-coverage: gotestsum ensure-reports-dir generate envtest
+test-with-coverage: gotestsum ensure-reports-dir generate envtest ## Run tests with coverage reporting
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GOTESTSUM) --junitfile $(REPORTS_DIR)/unit-tests.xml -- -race -coverprofile=$(REPORTS_DIR)/coverage.out -covermode=atomic -v -cover ./...
 	make report-coverage
 
@@ -63,26 +83,28 @@ ensure-reports-dir:
 	@mkdir -p $(REPORTS_DIR)
 
 .PHONY: report-coverage
-report-coverage: gocover-cobertura
+report-coverage: gocover-cobertura ## Strip mocks from coverage and generate Cobertura XML
 	@sed -i.bak '/\/mock_.*\.go/d' $(REPORTS_DIR)/coverage.out
 	@sed -i.bak '/internal\/example\.go/d' $(REPORTS_DIR)/coverage.out
 	@go tool cover -func=$(REPORTS_DIR)/coverage.out
 	$(GOCOVER_COBERTURA) < $(REPORTS_DIR)/coverage.out > $(REPORTS_DIR)/coverage.xml
 
+##@ Build
+
 .PHONY: build
-build: generate
+build: generate ## Build the operator binary
 	go build cmd/operator/main.go
 
 .PHONY: build-docker
-build-docker: generate
+build-docker: generate ## Build the Docker image
 	docker build -t buildkit-operator:latest -f Dockerfile .
 
 .PHONY: start_webhook_reverse_proxy
-start_webhook_reverse_proxy:
+start_webhook_reverse_proxy: ## Start frpc webhook reverse proxy
 	killall frpc || true
 	frpc -c ./kind/webhook/frpc.toml
 
-##@ Kind cluster
+##@ Kind Cluster
 KUBECONFIG=kind/kubeconfig
 CLUSTER_NAME=buildkit
 KUBECONTEXT=kind-$(CLUSTER_NAME)
@@ -90,23 +112,24 @@ TMPDIR_VAR=$(shell echo $${TMPDIR:-/tmp})
 BUILDKIT_IMAGE=moby/buildkit:latest
 
 .PHONY: run
-run: generate
+run: generate ## Run the operator against the local Kind cluster
 	echo "Starting webhook reverse proxy..."; \
 	make start_webhook_reverse_proxy & \
 	echo "Starting operator..."; \
 	go run cmd/operator/main.go --kubeconfig $(KUBECONFIG) --kubecontext $(KUBECONTEXT) & \
 	wait
+	killall frpc || true
 
 .PHONY: create
-create: check_cluster create_cluster create_namespace pull_images apply_crds create_local_webhook_cert apply_webhook_config
+create: check_cluster create_cluster create_namespace pull_images apply_crds create_local_webhook_cert apply_webhook_config ## Create a local Kind cluster for development
 	@echo "Your cluster is ready! You can now run 'make run' to start your operator."
 
 .PHONY: delete
-delete:
+delete: ## Delete the local Kind cluster
 	kind delete cluster --name $(CLUSTER_NAME)
 
 .PHONY: recreate
-recreate: delete create
+recreate: delete create ## Destroy and recreate the local Kind cluster
 
 .PHONY: check_cluster
 check_cluster:
@@ -162,7 +185,7 @@ apply_webhook_config:
 
 .PHONY: create_local_webhook_cert
 create_local_webhook_cert:
-	mkdir -p $(TMPDIR_VAR)/k8s-webhook-server/serving-certs
+	@mkdir -p $(TMPDIR_VAR)/k8s-webhook-server/serving-certs
 
 	openssl req -x509 -nodes -days 365 \
   -newkey rsa:2048 \
@@ -176,7 +199,7 @@ create_local_webhook_cert:
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
-	mkdir -p $(LOCALBIN)
+	@mkdir -p $(LOCALBIN)
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)
