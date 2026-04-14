@@ -1,5 +1,5 @@
 [tools]
-go = "1.26.1"
+go = "1.26.2"
 kind = "0.31.0"
 "github:fatedier/frp" = "0.68.1"
 
