@@ -1,0 +1,8 @@
+[tools]
+go = "1.26.1"
+kind = "0.31.0"
+"github:fatedier/frp" = "0.68.1"
+
+[settings]
+install_before = "7d"
+
