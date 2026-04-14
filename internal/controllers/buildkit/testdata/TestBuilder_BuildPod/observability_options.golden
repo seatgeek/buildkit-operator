@@ -30,7 +30,6 @@ spec:
       grpc:
         port: 1234
         service: null
-      initialDelaySeconds: 5
       periodSeconds: 30
       timeoutSeconds: 3
     name: buildkit
@@ -43,11 +42,16 @@ spec:
       grpc:
         port: 1234
         service: null
-      initialDelaySeconds: 5
       periodSeconds: 15
     resources: {}
     securityContext:
       privileged: true
+    startupProbe:
+      failureThreshold: 15
+      grpc:
+        port: 1234
+        service: null
+      periodSeconds: 2
     volumeMounts:
     - mountPath: /var/lib/buildkit
       name: buildkitd
