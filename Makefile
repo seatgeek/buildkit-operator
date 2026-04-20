@@ -246,7 +246,7 @@ GOTESTSUM = $(LOCALBIN)/gotestsum-$(GOTESTSUM_VERSION)
 GOCOVER_COBERTURA_VERSION ?= v1.4.0
 GOCOVER_COBERTURA = $(LOCALBIN)/gocover-cobertura-$(GOCOVER_COBERTURA_VERSION)
 # renovate: datasource=go depName=github.com/mikefarah/yq/v4
-YQ_VERSION ?= v4.52.5
+YQ_VERSION ?= v4.53.2
 YQ ?= $(LOCALBIN)/yq # no version suffix, as we need to reference this outside of this Makefile
 # renovate: datasource=github-releases depName=seatgeek/buildkit-prestop-script
 BUILDKIT_PRESTOP_VERSION ?= v1.2.0
