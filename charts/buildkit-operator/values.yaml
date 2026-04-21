@@ -99,6 +99,26 @@ operator:
     enabled: true
     # Metrics server port
     port: 8080
+    # Service Monitor resource config
+    serviceMonitor:
+      # Specifies whether a ServiceMonitor should be created.
+      enabled: false
+      # Scrape interval. Prometheus default is used if not specified
+      # interval: ""
+      # Additional labels for the ServiceMonitor.
+      additionalLabels: {}
+      # Additional annotations to add to ServiceMonitor
+      additionalAnnotations: {}
+      # Relabelings for the `metrics` endpoint on the ServiceMonitor.
+      # For more details on relabelings, see: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
+      relabelings: []
+      # Metric relabelings for the `metrics` endpoint on the ServiceMonitor.
+      # For more details on metric relabelings, see: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs
+      metricRelabelings: []
+      # Configuration on `metrics` endpoint for the ServiceMonitor.
+      # Not to be used to add additional endpoints.
+      # See the Prometheus operator documentation for configurable fields https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#endpoint
+      endpointConfig: {}
 
 # RBAC configuration
 rbac:
@@ -109,6 +129,12 @@ rbac:
 crds:
   # Whether to install CRDs as part of this chart
   install: true
+
+service:
+  # Enable service
+  enabled: true
+  # Additional annotations for the Service.
+  annotations: {}
 
 # Webhook configuration
 webhook:
