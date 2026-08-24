@@ -25,6 +25,7 @@ import (
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
+	"github.com/seatgeek/buildkit-operator/internal/bootstrap"
 	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit"
 	"github.com/seatgeek/buildkit-operator/internal/controlplane"
 	intscheme "github.com/seatgeek/buildkit-operator/internal/scheme"
@@ -62,6 +63,9 @@ var _ = BeforeSuite(func() {
 		WithCRDDirectoryPaths(test.CRDPaths()).
 		WithScheme(scheme).
 		WithLog(log.Desugar()).
+		// the production cache filters Pods by label; running tests with the
+		// same cache options proves managed pods stay visible to the operator
+		WithManagerOpts(manager.Options{Cache: bootstrap.CacheOptions(nil)}).
 		WithManagerSetupFns(
 			func(mgr manager.Manager) error {
 				clientApplicator := &io.ClientApplicator{

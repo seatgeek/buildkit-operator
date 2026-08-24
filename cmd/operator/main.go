@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/reddit/achilles-sdk/pkg/bootstrap"
+	sdkbootstrap "github.com/reddit/achilles-sdk/pkg/bootstrap"
 	"github.com/reddit/achilles-sdk/pkg/fsm/metrics"
 	"github.com/reddit/achilles-sdk/pkg/io"
 	"github.com/reddit/achilles-sdk/pkg/logging"
@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	crtMetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
+	"github.com/seatgeek/buildkit-operator/internal/bootstrap"
 	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit"
 	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit_template"
 	"github.com/seatgeek/buildkit-operator/internal/controlplane"
@@ -30,7 +31,7 @@ import (
 // controllers should run. Typically these are fed values from CLI flags or
 // environment variables.
 type opts struct {
-	bootstrap bootstrap.Options
+	bootstrap sdkbootstrap.Options
 }
 
 const (
@@ -69,9 +70,9 @@ func rootCommand(ctx context.Context) *cobra.Command {
 }
 
 // initStartFunc accepts options that are typically set from CLI flags or
-// environment variables. It returns an instance of [bootstrap.StartFunc],
+// environment variables. It returns an instance of [sdkbootstrap.StartFunc],
 // which can then be fed into [bootstrap.Start].
-func initStartFunc(o *opts) bootstrap.StartFunc {
+func initStartFunc(o *opts) sdkbootstrap.StartFunc {
 	return func(ctx context.Context, mgr manager.Manager) error {
 		meta.InitRedditLabels(ApplicationName, Version, ComponentName)
 

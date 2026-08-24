@@ -65,6 +65,8 @@ kubectl --kubeconfig ./kind/kubeconfig [command]
   - `builder.go`: Template construction logic
   - `conditions.go`: Status condition constants
 
+- **internal/bootstrap/**: Manager startup, mirroring the Achilles SDK's `bootstrap.Start` but with the informer cache scoped (by the SDK's managed-by label) to only the Pods and ConfigMaps this operator manages
+
 - **internal/webhooks/**: Admission webhook handlers
   - `buildkit.go`: Validation webhook for Buildkit resources
   - `buildkit_template.go`: Validation and defaulting webhook for BuildkitTemplate resources
