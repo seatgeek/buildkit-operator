@@ -1,7 +1,7 @@
 [tools]
 go = "1.26.2"
 kind = "0.31.0"
-"github:fatedier/frp" = "0.68.1"
+"github:fatedier/frp" = "0.71.0"
 
 [settings]
 install_before = "7d"
