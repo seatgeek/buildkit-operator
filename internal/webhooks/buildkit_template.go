@@ -58,8 +58,7 @@ func (v *BuildkitTemplateValidator) validate(obj runtime.Object) (admission.Warn
 	if _, err := toml.Decode(bkt.Spec.BuildkitdToml, &tmp); err != nil {
 		reason := "invalid TOML syntax"
 
-		var perr toml.ParseError
-		if errors.As(err, &perr) {
+		if perr, ok := errors.AsType[toml.ParseError](err); ok {
 			reason = perr.ErrorWithPosition()
 		}
 
