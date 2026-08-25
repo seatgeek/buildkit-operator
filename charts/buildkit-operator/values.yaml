@@ -57,6 +57,13 @@ operator:
   # Additional annotations to apply to the operator pod template
   podAnnotations: {}
 
+  # Additional labels to apply to the operator Deployment
+  # (avoid overriding app.kubernetes.io/* labels; GitOps tools track ownership by them)
+  deploymentLabels: {}
+
+  # Additional annotations to apply to the operator Deployment
+  deploymentAnnotations: {}
+
   # Additional environment variables for the operator
   env: []
 
