@@ -3,7 +3,6 @@ metadata:
     container.apparmor.security.beta.kubernetes.io/buildkit: unconfined
     example.com/custom: value
     template.example.com/config: enabled
-  creationTimestamp: null
   generateName: test-buildkit-
   labels:
     app.kubernetes.io/component: builder

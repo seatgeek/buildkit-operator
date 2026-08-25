@@ -1,5 +1,4 @@
 metadata:
-  creationTimestamp: null
   generateName: test-buildkit-
   labels:
     app.kubernetes.io/name: buildkit

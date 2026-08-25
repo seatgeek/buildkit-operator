@@ -232,7 +232,7 @@ CLIENT_GEN ?= $(LOCALBIN)/client-gen-$(CLIENT_GEN_VERSION)
 # renovate: datasource=go depName=sigs.k8s.io/controller-runtime
 ENVTEST_VERSION ?= release-0.20
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
-ENVTEST_K8S_VERSION = 1.32
+ENVTEST_K8S_VERSION = 1.34
 # renovate: datasource=go depName=github.com/incu6us/goimports-reviser/v3
 GOIMPORTS_REVISER_VERSION ?= v3.12.6
 GOIMPORTS_REVISER ?= $(LOCALBIN)/goimports-reviser-$(GOIMPORTS_REVISER_VERSION)
