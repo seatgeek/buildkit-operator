@@ -2,7 +2,6 @@ metadata:
   annotations:
     bar: "456"
     foo: foo
-  creationTimestamp: null
   generateName: test-buildkit-
   labels:
     app.kubernetes.io/name: buildkit
