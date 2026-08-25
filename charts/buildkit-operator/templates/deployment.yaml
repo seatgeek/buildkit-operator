@@ -3,12 +3,19 @@ kind: Deployment
 metadata:
   name: {{ include "buildkit-operator.fullname" . }}-controller-manager
   namespace: {{ .Release.Namespace }}
+  {{- with .Values.operator.deploymentAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   labels:
     app.kubernetes.io/component: manager
     app.kubernetes.io/created-by: buildkit-operator
     app.kubernetes.io/part-of: buildkit-operator
     control-plane: controller-manager
     {{- include "buildkit-operator.labels" . | nindent 4 }}
+    {{- with .Values.operator.deploymentLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
