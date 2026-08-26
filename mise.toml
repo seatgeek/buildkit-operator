@@ -1,6 +1,6 @@
 [tools]
 go = "1.27.0"
-kind = "0.32.0"
+kind = "0.33.0"
 "github:fatedier/frp" = "0.71.0"
 
 [settings]
