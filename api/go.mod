@@ -1,5 +1,10 @@
 module github.com/seatgeek/buildkit-operator/api
 
+// This module is published for separate import, so this directive is a
+// compatibility floor for downstream consumers rather than an internal
+// setting. It is deliberately held below the root module's Go version and
+// should only be raised when code here needs a newer language or stdlib
+// feature. Renovate is configured to leave it alone.
 go 1.26.0
 
 require (

@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
 	"github.com/seatgeek/buildkit-operator/internal/prestop"
@@ -47,10 +46,8 @@ func (b Builder) ConfigMap() *corev1.ConfigMap {
 	}
 
 	return &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      b.configMapName(),
-			Namespace: b.template.Namespace,
-		},
+		Name:      b.configMapName(),
+		Namespace: b.template.Namespace,
 		Data: map[string]string{
 			"buildkitd.toml": b.template.Spec.BuildkitdToml,
 		},
@@ -72,10 +69,8 @@ func (b Builder) ScriptsConfigMap() *corev1.ConfigMap {
 	}
 
 	return &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("buildkit-%s-scripts", b.template.Name),
-			Namespace: b.template.Namespace,
-		},
+		Name:      fmt.Sprintf("buildkit-%s-scripts", b.template.Name),
+		Namespace: b.template.Namespace,
 		Data: map[string]string{
 			PreStopScriptName: prestop.Script(b.template.Spec.Port),
 		},

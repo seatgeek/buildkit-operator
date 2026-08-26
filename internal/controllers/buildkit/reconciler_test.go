@@ -12,7 +12,6 @@ import (
 	"github.com/reddit/achilles-sdk-api/api"
 	sdktest "github.com/reddit/achilles-sdk/pkg/test"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
@@ -28,13 +27,11 @@ var _ = Describe("Buildkit Reconciler", func() {
 
 	BeforeEach(func() {
 		namespace = fmt.Sprintf("reconciler-test-%s", sdktest.GenerateRandomString(8))
-		Expect(c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}})).To(Succeed())
+		Expect(c.Create(ctx, &corev1.Namespace{Name: namespace})).To(Succeed())
 
 		buildkitTemplate = &v1alpha1.BuildkitTemplate{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-template",
-				Namespace: namespace,
-			},
+			Name:      "test-template",
+			Namespace: namespace,
 			Spec: v1alpha1.BuildkitTemplateSpec{
 				Port: 1234,
 			},
@@ -42,10 +39,8 @@ var _ = Describe("Buildkit Reconciler", func() {
 		Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
 
 		buildkit = &v1alpha1.Buildkit{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-buildkit",
-				Namespace: namespace,
-			},
+			Name:      "test-buildkit",
+			Namespace: namespace,
 			Spec: v1alpha1.BuildkitSpec{
 				Template: buildkitTemplate.Name,
 			},
@@ -55,7 +50,7 @@ var _ = Describe("Buildkit Reconciler", func() {
 			Expect(c.DeleteAllOf(ctx, &v1alpha1.Buildkit{}, client.InNamespace(namespace))).To(Succeed())
 			Expect(c.DeleteAllOf(ctx, &v1alpha1.BuildkitTemplate{}, client.InNamespace(namespace))).To(Succeed())
 			Expect(c.DeleteAllOf(ctx, &corev1.Pod{}, client.InNamespace(namespace))).To(Succeed())
-			Expect(c.Delete(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}})).To(Succeed())
+			Expect(c.Delete(ctx, &corev1.Namespace{Name: namespace})).To(Succeed())
 		})
 	})
 

@@ -11,7 +11,6 @@ import (
 	. "github.com/onsi/gomega"
 	sdktest "github.com/reddit/achilles-sdk/pkg/test"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
@@ -22,21 +21,19 @@ var _ = Describe("BuildkitTemplateValidator", func() {
 
 	BeforeEach(func() {
 		namespace = fmt.Sprintf("webhook-test-%s", sdktest.GenerateRandomString(8))
-		Expect(c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}})).To(Succeed())
+		Expect(c.Create(ctx, &corev1.Namespace{Name: namespace})).To(Succeed())
 
 		DeferCleanup(func() {
 			Expect(c.DeleteAllOf(ctx, &v1alpha1.BuildkitTemplate{}, client.InNamespace(namespace))).To(Succeed())
-			Expect(c.Delete(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}})).To(Succeed())
+			Expect(c.Delete(ctx, &corev1.Namespace{Name: namespace})).To(Succeed())
 		})
 	})
 
 	Context("When creating a new BuildkitTemplate resource", func() {
 		It("should reject invalid TOML syntax", func() {
 			buildkitTemplate := &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit-template",
-					Namespace: namespace,
-				},
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					BuildkitdToml: `
 [[[invalid toml
@@ -49,10 +46,8 @@ missing closing bracket`,
 
 		It("should accept valid TOML syntax", func() {
 			buildkitTemplate := &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit-template",
-					Namespace: namespace,
-				},
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					BuildkitdToml: `
 [worker.oci]
@@ -68,10 +63,8 @@ missing closing bracket`,
 
 		It("should accept empty TOML", func() {
 			buildkitTemplate := &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit-template",
-					Namespace: namespace,
-				},
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					BuildkitdToml: "",
 				},
@@ -86,10 +79,8 @@ missing closing bracket`,
 
 		BeforeEach(func() {
 			existingTemplate = &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "existing-template",
-					Namespace: namespace,
-				},
+				Name:      "existing-template",
+				Namespace: namespace,
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					BuildkitdToml: `
 [worker.oci]
@@ -122,22 +113,20 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 
 	BeforeEach(func() {
 		namespace = fmt.Sprintf("webhook-test-%s", sdktest.GenerateRandomString(8))
-		Expect(c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}})).To(Succeed())
+		Expect(c.Create(ctx, &corev1.Namespace{Name: namespace})).To(Succeed())
 
 		DeferCleanup(func() {
 			Expect(c.DeleteAllOf(ctx, &v1alpha1.BuildkitTemplate{}, client.InNamespace(namespace))).To(Succeed())
-			Expect(c.Delete(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}})).To(Succeed())
+			Expect(c.Delete(ctx, &corev1.Namespace{Name: namespace})).To(Succeed())
 		})
 	})
 
 	Context("When creating a BuildkitTemplate with default values", func() {
 		It("should default missing fields", func() {
 			buildkitTemplate := &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit-template",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.BuildkitTemplateSpec{},
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
+				Spec:      v1alpha1.BuildkitTemplateSpec{},
 			}
 
 			Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
@@ -156,10 +145,8 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 			customTerminationGracePeriod := int64(60)
 
 			buildkitTemplate := &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit-template",
-					Namespace: namespace,
-				},
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:            customPort,
 					Image:           "moby/buildkit:v0.23.0",

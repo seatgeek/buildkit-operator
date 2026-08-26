@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
 	"github.com/seatgeek/buildkit-operator/internal/prestop"
@@ -37,11 +36,9 @@ func TestBuilder_ConfigMapName(t *testing.T) {
 		{
 			name: "returns correct name for template",
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-namespace",
-				},
-				Spec: v1alpha1.BuildkitTemplateSpec{},
+				Name:      "test-template",
+				Namespace: "test-namespace",
+				Spec:      v1alpha1.BuildkitTemplateSpec{},
 			},
 			want: "buildkit-test-template-toml",
 		},
@@ -75,19 +72,15 @@ func TestBuilder_ConfigMap(t *testing.T) {
 		{
 			name: "returns configmap when BuildkitdToml is not empty",
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-namespace",
-				},
+				Name:      "test-template",
+				Namespace: "test-namespace",
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					BuildkitdToml: someToml,
 				},
 			},
 			want: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "buildkit-test-template-toml",
-					Namespace: "test-namespace",
-				},
+				Name:      "buildkit-test-template-toml",
+				Namespace: "test-namespace",
 				Data: map[string]string{
 					"buildkitd.toml": someToml,
 				},
@@ -96,10 +89,8 @@ func TestBuilder_ConfigMap(t *testing.T) {
 		{
 			name: "returns nil when BuildkitdToml is empty",
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-namespace",
-				},
+				Name:      "test-template",
+				Namespace: "test-namespace",
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					BuildkitdToml: "",
 				},
@@ -144,11 +135,9 @@ func TestBuilder_ScriptsConfigMapName(t *testing.T) {
 		{
 			name: "returns correct name for template",
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-namespace",
-				},
-				Spec: v1alpha1.BuildkitTemplateSpec{},
+				Name:      "test-template",
+				Namespace: "test-namespace",
+				Spec:      v1alpha1.BuildkitTemplateSpec{},
 			},
 			want: "buildkit-test-template-scripts",
 		},
@@ -182,10 +171,8 @@ func TestBuilder_ScriptsConfigMap(t *testing.T) {
 		{
 			name: "returns configmap when pre-stop script is needed",
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-namespace",
-				},
+				Name:      "test-template",
+				Namespace: "test-namespace",
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port: 1234,
 					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
@@ -194,10 +181,8 @@ func TestBuilder_ScriptsConfigMap(t *testing.T) {
 				},
 			},
 			want: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "buildkit-test-template-scripts",
-					Namespace: "test-namespace",
-				},
+				Name:      "buildkit-test-template-scripts",
+				Namespace: "test-namespace",
 				Data: map[string]string{
 					"buildkit-prestop.sh": prestop.Script(1234),
 				},
@@ -206,11 +191,9 @@ func TestBuilder_ScriptsConfigMap(t *testing.T) {
 		{
 			name: "returns nil when pre-stop script is not needed",
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-namespace",
-				},
-				Spec: v1alpha1.BuildkitTemplateSpec{},
+				Name:      "test-template",
+				Namespace: "test-namespace",
+				Spec:      v1alpha1.BuildkitTemplateSpec{},
 			},
 			want: nil,
 		},
