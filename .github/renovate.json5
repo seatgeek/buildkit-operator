@@ -89,5 +89,46 @@
       ],
       groupName: 'mikefarah/yq',
     },
+    {
+      description: 'Group go updates together',
+      matchPackageNames: ['go', 'golang'],
+      groupName: 'go',
+    },
+    {
+      "description": "Offer separate minor and patch updates for certain deps",
+      "matchPackagePrefixes": ["k8s.io/", "sigs.k8s.io/", "github.com/kubernetes-sigs/", "kubectl", "rancher/kubectl", "kubernetes/", "github.com/reddit/"],
+      "separateMultipleMajor": true,
+      "separateMultipleMinor": true,
+      "separateMinorPatch": true
+    },
+    {
+      "description": "Hold certain non-patch infra-related deps until we're ready",
+      "matchPackagePrefixes": ["k8s.io/", "sigs.k8s.io/", "github.com/kubernetes-sigs/", "kubectl", "rancher/kubectl", "kubernetes/", "github.com/reddit/"],
+      "matchUpdateTypes": ["major", "minor"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Group kubernetes updates together",
+      "matchManagers": ["gomod"],
+      "matchPackagePrefixes": ["k8s.io/"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "groupName": "kubernetes packages",
+      "groupSlug": "kubernetes-go"
+    },
+    {
+      "description": "Upgrade all kubernetes dependencies, including indirect ones",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["k8s.io/**"],
+      "matchDepTypes": ["indirect"],
+      "enabled": true
+    },
+    {
+      "description": "Auto-merge patch updates to kubernetes packages",
+      "matchManagers": ["gomod"],
+      "matchPackagePrefixes": ["k8s.io/"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "rebaseWhen": "auto"
+    },
   ],
 }
