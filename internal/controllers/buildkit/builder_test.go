@@ -32,10 +32,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 		{
 			name: "template not found",
 			buildkit: &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: "test-ns",
-				},
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "nonexistent-template",
 				},
@@ -46,19 +44,15 @@ func TestBuilder_BuildPod(t *testing.T) {
 		{
 			name: "simple example",
 			buildkit: &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: "test-ns",
-				},
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
 				},
 			},
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-ns",
-				},
+				Name:      "test-template",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:  1234,
 					Image: "moby/buildkit:latest",
@@ -68,10 +62,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 		{
 			name: "labels and annotations",
 			buildkit: &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: "test-ns",
-				},
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
 					Labels: map[string]string{
@@ -85,10 +77,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 				},
 			},
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-ns",
-				},
+				Name:      "test-template",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:  1234,
 					Image: "moby/buildkit:latest",
@@ -104,19 +94,15 @@ func TestBuilder_BuildPod(t *testing.T) {
 		{
 			name: "rootless",
 			buildkit: &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: "test-ns",
-				},
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
 				},
 			},
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-ns",
-				},
+				Name:      "test-template",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:     1234,
 					Image:    "moby/buildkit:rootless",
@@ -127,19 +113,15 @@ func TestBuilder_BuildPod(t *testing.T) {
 		{
 			name: "observability options",
 			buildkit: &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: "test-ns",
-				},
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
 				},
 			},
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-ns",
-				},
+				Name:      "test-template",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:  1234,
 					Image: "moby/buildkit:latest",
@@ -158,19 +140,15 @@ func TestBuilder_BuildPod(t *testing.T) {
 		{
 			name: "with buildkitd.toml",
 			buildkit: &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: "test-ns",
-				},
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
 				},
 			},
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-ns",
-				},
+				Name:      "test-template",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:          1234,
 					Image:         "moby/buildkit:latest",
@@ -181,19 +159,15 @@ func TestBuilder_BuildPod(t *testing.T) {
 		{
 			name: "hostusers false",
 			buildkit: &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: "test-ns",
-				},
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
 				},
 			},
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-ns",
-				},
+				Name:      "test-template",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:      1234,
 					Image:     "moby/buildkit:latest",
@@ -204,10 +178,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 		{
 			name: "full customization",
 			buildkit: &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: "test-ns",
-				},
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
 					Resources: corev1.ResourceRequirements{
@@ -230,10 +202,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 				},
 			},
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-ns",
-				},
+				Name:      "test-template",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					PodLabels: map[string]string{
 						"app.kubernetes.io/name":      "template-buildkit", // Will be overridden
@@ -329,10 +299,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 		{
 			name: "requested resources exceed template defaults",
 			buildkit: &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: "test-ns",
-				},
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
 					Resources: corev1.ResourceRequirements{
@@ -348,10 +316,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 				},
 			},
 			template: &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-template",
-					Namespace: "test-ns",
-				},
+				Name:      "test-template",
+				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Port:  1234,
 					Image: "moby/buildkit:latest",

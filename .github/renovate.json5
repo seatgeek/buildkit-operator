@@ -108,6 +108,12 @@
       "rangeStrategy": "auto"
     },
     {
+      "description": "Never bump the api module's Go directive: it is a compatibility floor for downstream consumers, not an internal setting. Raise it by hand when code there needs a newer feature.",
+      "matchDepNames": ["go"],
+      "matchFileNames": ["api/go.mod"],
+      "enabled": false
+    },
+    {
       "description": "Offer separate minor and patch updates for certain deps",
       "matchPackageNames": ["k8s.io/**", "sigs.k8s.io/**", "github.com/kubernetes-sigs/**", "kubectl{/,}**", "rancher/kubectl{/,}**", "kubernetes/**", "github.com/reddit/**"],
       "separateMultipleMajor": true,

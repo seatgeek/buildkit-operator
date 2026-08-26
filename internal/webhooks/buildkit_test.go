@@ -25,32 +25,28 @@ var _ = Describe("BuildkitValidator", func() {
 
 	BeforeEach(func() {
 		namespace = fmt.Sprintf("webhook-test-%s", sdktest.GenerateRandomString(8))
-		Expect(c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}})).To(Succeed())
+		Expect(c.Create(ctx, &corev1.Namespace{Name: namespace})).To(Succeed())
 
 		someExistingTemplate := &v1alpha1.BuildkitTemplate{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      someExistingTemplateName,
-				Namespace: namespace,
-			},
-			Spec: v1alpha1.BuildkitTemplateSpec{},
+			Name:      someExistingTemplateName,
+			Namespace: namespace,
+			Spec:      v1alpha1.BuildkitTemplateSpec{},
 		}
 		Expect(c.Create(ctx, someExistingTemplate)).To(Succeed())
 
 		DeferCleanup(func() {
 			Expect(c.DeleteAllOf(ctx, &v1alpha1.Buildkit{}, client.InNamespace(namespace))).To(Succeed())
 			Expect(c.DeleteAllOf(ctx, &v1alpha1.BuildkitTemplate{}, client.InNamespace(namespace))).To(Succeed())
-			Expect(c.Delete(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}})).To(Succeed())
+			Expect(c.Delete(ctx, &corev1.Namespace{Name: namespace})).To(Succeed())
 		})
 	})
 
 	Context("When creating a new Buildkit resource", func() {
 		It("should require the spec.template field to be set to a non-empty value", func() {
 			buildkit := &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: "default",
-				},
-				Spec: v1alpha1.BuildkitSpec{
+				Name:      "test-buildkit",
+				Namespace: "default",
+				Spec:      v1alpha1.BuildkitSpec{
 					// Template is intentionally left empty to test validation
 				},
 			}
@@ -60,10 +56,8 @@ var _ = Describe("BuildkitValidator", func() {
 
 		It("should require the spec.template field to reference an existing BuildkitTemplate", func() {
 			buildkit := &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: namespace,
-				},
+				Name:      "test-buildkit",
+				Namespace: namespace,
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "non-existent-template",
 				},
@@ -74,10 +68,8 @@ var _ = Describe("BuildkitValidator", func() {
 
 		It("should allow creation with a valid template reference", func() {
 			buildkit := &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: namespace,
-				},
+				Name:      "test-buildkit",
+				Namespace: namespace,
 				Spec: v1alpha1.BuildkitSpec{
 					Template: someExistingTemplateName,
 				},
@@ -93,10 +85,8 @@ var _ = Describe("BuildkitValidator", func() {
 
 		BeforeEach(func() {
 			templateWithRequireOwner := &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      templateWithRequireOwnerName,
-					Namespace: namespace,
-				},
+				Name:      templateWithRequireOwnerName,
+				Namespace: namespace,
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
 						RequireOwner: true,
@@ -106,10 +96,8 @@ var _ = Describe("BuildkitValidator", func() {
 			Expect(c.Create(ctx, templateWithRequireOwner)).To(Succeed())
 
 			templateWithoutRequireOwner := &v1alpha1.BuildkitTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      templateWithoutRequireOwnerName,
-					Namespace: namespace,
-				},
+				Name:      templateWithoutRequireOwnerName,
+				Namespace: namespace,
 				Spec: v1alpha1.BuildkitTemplateSpec{
 					Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
 						RequireOwner: false,
@@ -121,10 +109,8 @@ var _ = Describe("BuildkitValidator", func() {
 
 		It("should allow creation when RequireOwner=false and no owner references", func() {
 			buildkit := &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit-no-owner-not-required",
-					Namespace: namespace,
-				},
+				Name:      "test-buildkit-no-owner-not-required",
+				Namespace: namespace,
 				Spec: v1alpha1.BuildkitSpec{
 					Template: templateWithoutRequireOwnerName,
 				},
@@ -135,16 +121,14 @@ var _ = Describe("BuildkitValidator", func() {
 
 		It("should allow creation when RequireOwner=true and owner references are present", func() {
 			buildkit := &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit-with-owner",
-					Namespace: namespace,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "v1",
-							Kind:       "Pod",
-							Name:       "some-owner",
-							UID:        "123456",
-						},
+				Name:      "test-buildkit-with-owner",
+				Namespace: namespace,
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "v1",
+						Kind:       "Pod",
+						Name:       "some-owner",
+						UID:        "123456",
 					},
 				},
 				Spec: v1alpha1.BuildkitSpec{
@@ -157,10 +141,8 @@ var _ = Describe("BuildkitValidator", func() {
 
 		It("should reject creation when RequireOwner=true but no owner references are present", func() {
 			buildkit := &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit-no-owner",
-					Namespace: namespace,
-				},
+				Name:      "test-buildkit-no-owner",
+				Namespace: namespace,
 				Spec: v1alpha1.BuildkitSpec{
 					Template: templateWithRequireOwnerName,
 				},
@@ -173,12 +155,10 @@ var _ = Describe("BuildkitValidator", func() {
 	Context("When updating an existing Buildkit resource", func() {
 		It("should allow updates to the metadata", func() {
 			buildkit := &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: namespace,
-					Labels: map[string]string{
-						"updated": "false",
-					},
+				Name:      "test-buildkit",
+				Namespace: namespace,
+				Labels: map[string]string{
+					"updated": "false",
 				},
 				Spec: v1alpha1.BuildkitSpec{
 					Template: someExistingTemplateName,
@@ -194,10 +174,8 @@ var _ = Describe("BuildkitValidator", func() {
 
 		It("should disallow updates to the spec", func() {
 			buildkit := &v1alpha1.Buildkit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-buildkit",
-					Namespace: namespace,
-				},
+				Name:      "test-buildkit",
+				Namespace: namespace,
 				Spec: v1alpha1.BuildkitSpec{
 					Template: someExistingTemplateName,
 					Resources: corev1.ResourceRequirements{

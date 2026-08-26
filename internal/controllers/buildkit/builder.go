@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
@@ -42,20 +41,18 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 	// We define the overrideable defaults first; non-overrideable values will be set further down
 	const buildkitContainerName = "buildkit"
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: b.buildkit.Name + "-",
-			Name:         "",
-			Namespace:    b.buildkit.Namespace,
-			Annotations: merge.Maps(
-				b.buildkit.Spec.Annotations,
-				template.Spec.PodAnnotations,
-			),
-			Labels: merge.Maps(
-				map[string]string{"app.kubernetes.io/name": "buildkit"},
-				b.buildkit.Spec.Labels,
-				template.Spec.PodLabels,
-			),
-		},
+		GenerateName: b.buildkit.Name + "-",
+		Name:         "",
+		Namespace:    b.buildkit.Namespace,
+		Annotations: merge.Maps(
+			b.buildkit.Spec.Annotations,
+			template.Spec.PodAnnotations,
+		),
+		Labels: merge.Maps(
+			map[string]string{"app.kubernetes.io/name": "buildkit"},
+			b.buildkit.Spec.Labels,
+			template.Spec.PodLabels,
+		),
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
@@ -84,28 +81,22 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 					},
 					Resources: resources.WithMaximums(template.Spec.Resources.Maximum, template.Spec.Resources.Default, b.buildkit.Spec.Resources),
 					StartupProbe: &corev1.Probe{
-						ProbeHandler: corev1.ProbeHandler{
-							GRPC: &corev1.GRPCAction{
-								Port: template.Spec.Port,
-							},
+						GRPC: &corev1.GRPCAction{
+							Port: template.Spec.Port,
 						},
 						PeriodSeconds:    2,
 						FailureThreshold: 15,
 					},
 					ReadinessProbe: &corev1.Probe{
-						ProbeHandler: corev1.ProbeHandler{
-							GRPC: &corev1.GRPCAction{
-								Port: template.Spec.Port,
-							},
+						GRPC: &corev1.GRPCAction{
+							Port: template.Spec.Port,
 						},
 						PeriodSeconds:    15,
 						FailureThreshold: 2,
 					},
 					LivenessProbe: &corev1.Probe{
-						ProbeHandler: corev1.ProbeHandler{
-							GRPC: &corev1.GRPCAction{
-								Port: template.Spec.Port,
-							},
+						GRPC: &corev1.GRPCAction{
+							Port: template.Spec.Port,
 						},
 						TimeoutSeconds:   3,
 						PeriodSeconds:    30,
@@ -118,10 +109,8 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 			},
 			Volumes: []corev1.Volume{
 				{
-					Name: "buildkitd",
-					VolumeSource: corev1.VolumeSource{
-						EmptyDir: &corev1.EmptyDirVolumeSource{},
-					},
+					Name:     "buildkitd",
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
 				},
 			},
 			HostUsers:                     template.Spec.HostUsers,
@@ -201,12 +190,8 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 	if configMap := buildkit_template.NewBuilder(&template).ConfigMap(); configMap != nil {
 		pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
 			Name: "config",
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: configMap.Name,
-					},
-				},
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				Name: configMap.Name,
 			},
 		})
 
@@ -225,13 +210,9 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 	if configMap := buildkit_template.NewBuilder(&template).ScriptsConfigMap(); configMap != nil {
 		pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
 			Name: "scripts",
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: configMap.Name,
-					},
-					DefaultMode: new(int32(0o755)),
-				},
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				Name:        configMap.Name,
+				DefaultMode: new(int32(0o755)),
 			},
 		})
 

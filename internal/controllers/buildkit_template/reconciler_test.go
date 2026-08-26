@@ -13,7 +13,6 @@ import (
 	sdktest "github.com/reddit/achilles-sdk/pkg/test"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
@@ -41,13 +40,11 @@ var _ = Describe("BuildkitTemplate Reconciler", func() {
 
 	BeforeEach(func() {
 		namespace = fmt.Sprintf("reconciler-test-%s", sdktest.GenerateRandomString(8))
-		Expect(c.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}})).To(Succeed())
+		Expect(c.Create(ctx, &corev1.Namespace{Name: namespace})).To(Succeed())
 
 		buildkitTemplate = &v1alpha1.BuildkitTemplate{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-template",
-				Namespace: namespace,
-			},
+			Name:      "test-template",
+			Namespace: namespace,
 			Spec: v1alpha1.BuildkitTemplateSpec{
 				BuildkitdToml: "", // Start with empty TOML
 				Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{
@@ -58,7 +55,7 @@ var _ = Describe("BuildkitTemplate Reconciler", func() {
 
 		DeferCleanup(func() {
 			Expect(c.DeleteAllOf(ctx, &v1alpha1.BuildkitTemplate{}, client.InNamespace(namespace))).To(Succeed())
-			Expect(c.Delete(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}})).To(Succeed())
+			Expect(c.Delete(ctx, &corev1.Namespace{Name: namespace})).To(Succeed())
 		})
 	})
 
