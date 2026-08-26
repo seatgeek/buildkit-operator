@@ -90,10 +90,23 @@
       groupName: 'mikefarah/yq',
     },
     {
-      description: 'Group go updates together',
-      matchPackageNames: ['go', 'golang'],
-      groupName: 'go',
+      "description": "Offer to bump Golang versions in a single MR",
+      "matchDepNames": [
+        "go",
+        "golang",
+        "golang/go",
+        "github.com/golang/go",
+        "docker.io/library/golang",
+      ],
+      "enabled": true,
+      "rangeStrategy": "bump",
+      "groupName": "Golang"
     },
+    {
+      "matchDepNames": ["go"],
+      "matchFileNames": ["**/go.mod"],
+      "rangeStrategy": "auto"
+    }
     {
       "description": "Offer separate minor and patch updates for certain deps",
       "matchPackagePrefixes": ["k8s.io/", "sigs.k8s.io/", "github.com/kubernetes-sigs/", "kubectl", "rancher/kubectl", "kubernetes/", "github.com/reddit/"],
