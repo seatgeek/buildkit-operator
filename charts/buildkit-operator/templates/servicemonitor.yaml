@@ -6,14 +6,17 @@ metadata:
   name: {{ include "buildkit-operator.fullname" . | quote }}
   namespace: {{ .Release.Namespace }}
   labels:
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/created-by: buildkit-operator
+    app.kubernetes.io/part-of: buildkit-operator
     {{- include "buildkit-operator.labels" . | nindent 4 }}
     {{- with .Values.operator.metrics.serviceMonitor.additionalLabels }}
-      {{- toYaml . | nindent 4 }}
+    {{- toYaml . | nindent 4 }}
     {{- end }}
-    {{- with .Values.operator.metrics.serviceMonitor.annotations }}
-    annotations:
-      {{- toYaml . | nindent 4 }}
-    {{- end }}
+  {{- with .Values.operator.metrics.serviceMonitor.additionalAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   endpoints:
   - port: metrics
@@ -29,6 +32,9 @@ spec:
     {{- if .Values.operator.metrics.serviceMonitor.interval }}
     interval: {{ .Values.operator.metrics.serviceMonitor.interval }}
     {{- end }}
+    {{- with .Values.operator.metrics.serviceMonitor.endpointConfig }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   {{- if .Values.operator.metrics.serviceMonitor.jobLabel }}
   jobLabel: {{ .Values.operator.metrics.serviceMonitor.jobLabel }}
   {{- end }}
@@ -37,7 +43,8 @@ spec:
       - {{ $.Release.Namespace | quote }}
   selector:
     matchLabels:
-        {{- include "buildkit-operator.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: metrics
+      {{- include "buildkit-operator.selectorLabels" . | nindent 6 }}
 {{- end }}
 {{- end }}
 

@@ -5,15 +5,13 @@ metadata:
   name: {{ include "buildkit-operator.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/created-by: buildkit-operator
+    app.kubernetes.io/part-of: buildkit-operator
     {{- include "buildkit-operator.labels" . | nindent 4 }}
-  {{- if or .Values.additionalAnnotations .Values.service.annotations }}
-  annotations:
-  {{- with .Values.additionalAnnotations }}
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
   {{- with .Values.service.annotations }}
+  annotations:
     {{- toYaml . | nindent 4 }}
-  {{- end }}
   {{- end }}
 spec:
   type: ClusterIP
