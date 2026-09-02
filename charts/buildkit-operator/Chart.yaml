@@ -2,7 +2,9 @@ apiVersion: v2
 name: buildkit-operator
 description: Helm chart for the BuildKit Operator - manages BuildKit instances on Kubernetes
 type: application
-version: 0.1.0
+# NOTE: version/appVersion below are overwritten by the `publish-chart` CI job at publish time
+# based on git context (tag/branch/PR) — see `.github/workflows/ci.yml`.
+version: 0.2.0
 appVersion: "latest"
 
 keywords:
