@@ -61,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-go
-      - uses: mikefarah/yq@v4.53.6
+      - uses: mikefarah/yq@v4.54.1
       - uses: azure/setup-helm@v5
         with:
           version: '3.22.0'
