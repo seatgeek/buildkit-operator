@@ -40,6 +40,11 @@ func ParseCACertPEM(data string) (*x509.Certificate, error) {
 	if !cert.IsCA || !cert.BasicConstraintsValid {
 		return nil, errors.New("certificate is not a CA (basicConstraints CA:TRUE required)")
 	}
+	// No key usage means no restriction; any other set must allow signing certificates, or Go rejects
+	// client certificates it issued.
+	if cert.KeyUsage != 0 && cert.KeyUsage&x509.KeyUsageCertSign == 0 {
+		return nil, errors.New("CA certificate's key usage does not include certificate signing (keyCertSign)")
+	}
 
 	return cert, nil
 }

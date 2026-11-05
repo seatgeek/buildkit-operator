@@ -68,6 +68,8 @@ func TestParseCACertPEM(t *testing.T) {
 		{name: "private key block", data: string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte{1}})), wantErr: "expected a PEM-encoded CERTIFICATE block"},
 		{name: "two certificates", data: caPEM + caPEM, wantErr: "exactly one certificate"},
 		{name: "leaf certificate", data: leafCertPEM(t), wantErr: "not a CA"},
+		{name: "CA without certificate signing", data: caCertPEM(t, x509.KeyUsageDigitalSignature), wantErr: "keyCertSign"},
+		{name: "CA without key usage", data: caCertPEM(t, 0)},
 		{name: "server certificate", data: string(serverPEM), wantErr: "not a CA"},
 	}
 
@@ -129,4 +131,23 @@ func TestValidateServerKeyPair(t *testing.T) {
 	require.ErrorContains(t, ValidateServerKeyPair(certPEM, otherKey, "buildkit-a"), "do not form a pair")
 	require.ErrorContains(t, ValidateServerKeyPair(certPEM, nil, "buildkit-a"), "do not form a pair")
 	require.Error(t, ValidateServerKeyPair(certPEM, keyPEM, "buildkit-b"), "certificate must cover the instance name")
+}
+
+func caCertPEM(t *testing.T, usage x509.KeyUsage) string {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(2),
+		Subject:               pkix.Name{CommonName: "ca"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              usage,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 }
