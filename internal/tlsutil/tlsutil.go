@@ -18,10 +18,14 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"time"
 )
 
 const pemCertificate = "CERTIFICATE"
+
+// ClockSkew tolerates a client CA issued on a machine whose clock runs a little ahead.
+const ClockSkew = 5 * time.Minute
 
 // ParseCACertPEM checks that data holds exactly one PEM certificate usable as a CA.
 func ParseCACertPEM(data string) (*x509.Certificate, error) {
@@ -44,6 +48,12 @@ func ParseCACertPEM(data string) (*x509.Certificate, error) {
 	// client certificates it issued.
 	if cert.KeyUsage != 0 && cert.KeyUsage&x509.KeyUsageCertSign == 0 {
 		return nil, errors.New("CA certificate's key usage does not include certificate signing (keyCertSign)")
+	}
+	// Likewise an extended key usage, if present, must allow client authentication: Go checks it
+	// along the whole chain.
+	if (len(cert.ExtKeyUsage) > 0 || len(cert.UnknownExtKeyUsage) > 0) &&
+		!slices.Contains(cert.ExtKeyUsage, x509.ExtKeyUsageClientAuth) && !slices.Contains(cert.ExtKeyUsage, x509.ExtKeyUsageAny) {
+		return nil, errors.New("CA certificate's extended key usage does not allow client authentication (clientAuth)")
 	}
 
 	return cert, nil

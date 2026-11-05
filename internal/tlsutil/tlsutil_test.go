@@ -70,6 +70,9 @@ func TestParseCACertPEM(t *testing.T) {
 		{name: "leaf certificate", data: leafCertPEM(t), wantErr: "not a CA"},
 		{name: "CA without certificate signing", data: caCertPEM(t, x509.KeyUsageDigitalSignature), wantErr: "keyCertSign"},
 		{name: "CA without key usage", data: caCertPEM(t, 0)},
+		{name: "CA limited to server auth", data: caCertPEMWithEKU(t, x509.ExtKeyUsageServerAuth), wantErr: "clientAuth"},
+		{name: "CA allowing client auth", data: caCertPEMWithEKU(t, x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth)},
+		{name: "CA allowing any usage", data: caCertPEMWithEKU(t, x509.ExtKeyUsageAny)},
 		{name: "server certificate", data: string(serverPEM), wantErr: "not a CA"},
 	}
 
@@ -135,6 +138,16 @@ func TestValidateServerKeyPair(t *testing.T) {
 
 func caCertPEM(t *testing.T, usage x509.KeyUsage) string {
 	t.Helper()
+	return caCertPEMFull(t, usage, nil)
+}
+
+func caCertPEMWithEKU(t *testing.T, eku ...x509.ExtKeyUsage) string {
+	t.Helper()
+	return caCertPEMFull(t, x509.KeyUsageCertSign, eku)
+}
+
+func caCertPEMFull(t *testing.T, usage x509.KeyUsage, eku []x509.ExtKeyUsage) string {
+	t.Helper()
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
@@ -144,6 +157,7 @@ func caCertPEM(t *testing.T, usage x509.KeyUsage) string {
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(time.Hour),
 		KeyUsage:              usage,
+		ExtKeyUsage:           eku,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 	}

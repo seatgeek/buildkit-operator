@@ -70,7 +70,7 @@ func (v *BuildkitValidator) ValidateCreate(ctx context.Context, obj runtime.Obje
 			errorList = append(errorList, field.Invalid(caPath, "<PEM omitted>", err.Error()))
 		case now.After(ca.NotAfter):
 			errorList = append(errorList, field.Invalid(caPath, "<PEM omitted>", "CA certificate expired at "+ca.NotAfter.UTC().Format(time.RFC3339)))
-		case ca.NotBefore.After(now.Add(clockSkew)):
+		case ca.NotBefore.After(now.Add(tlsutil.ClockSkew)):
 			errorList = append(errorList, field.Invalid(caPath, "<PEM omitted>", "CA certificate is not valid until "+ca.NotBefore.UTC().Format(time.RFC3339)))
 		case template.Spec.RequireClientTLS && now.Add(tlsDeadline(&template)).After(ca.NotAfter):
 			// The instance may outlive the CA, after which no client can connect.
@@ -91,9 +91,6 @@ func (v *BuildkitValidator) ValidateCreate(ctx context.Context, obj runtime.Obje
 
 	return warnings, nil
 }
-
-// clockSkew tolerates a client CA issued on a machine whose clock runs a little ahead.
-const clockSkew = 5 * time.Minute
 
 // tlsDeadline is the pod deadline for a template that requires client TLS.
 func tlsDeadline(template *v1alpha1.BuildkitTemplate) time.Duration {
