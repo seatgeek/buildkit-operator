@@ -34,6 +34,16 @@ func (s *server) Check(ctx context.Context, req *healthpb.HealthCheckRequest) (*
 
 // Run serves until ctx is cancelled. socketPath is the absolute path of buildkitd's unix socket.
 func Run(ctx context.Context, listenAddr, socketPath string) error {
+	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", listenAddr)
+	if err != nil {
+		return fmt.Errorf("listening on %s: %w", listenAddr, err)
+	}
+
+	return runOn(ctx, lis, socketPath)
+}
+
+// runOn serves on lis, which it closes when ctx is cancelled.
+func runOn(ctx context.Context, lis net.Listener, socketPath string) error {
 	conn, err := grpc.NewClient("unix://"+socketPath,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		// gRPC's default reconnect backoff grows to 120s, during which checks fail fast. After
@@ -48,11 +58,6 @@ func Run(ctx context.Context, listenAddr, socketPath string) error {
 		return fmt.Errorf("creating buildkitd client: %w", err)
 	}
 	defer conn.Close() //nolint:errcheck
-
-	lis, err := (&net.ListenConfig{}).Listen(ctx, "tcp", listenAddr)
-	if err != nil {
-		return fmt.Errorf("listening on %s: %w", listenAddr, err)
-	}
 
 	return serve(ctx, lis, conn)
 }

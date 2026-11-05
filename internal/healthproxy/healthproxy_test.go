@@ -5,6 +5,7 @@
 package healthproxy
 
 import (
+	"context"
 	"net"
 	"path/filepath"
 	"testing"
@@ -19,6 +20,35 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 )
+
+// startProxy runs the proxy on a listener it already holds, so no other process can take the port, and
+// fails the test if the proxy exits with an error.
+func startProxy(t *testing.T, socket string) string {
+	t.Helper()
+
+	lis, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- runOn(ctx, lis, socket) }()
+	t.Cleanup(func() {
+		cancel()
+		assert.NoError(t, <-done)
+	})
+
+	return lis.Addr().String()
+}
+
+func TestRunListenError(t *testing.T) {
+	t.Parallel()
+
+	taken, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = taken.Close() })
+
+	require.ErrorContains(t, Run(t.Context(), taken.Addr().String(), "/nonexistent.sock"), "listening on")
+}
 
 // startUpstream runs a stand-in for buildkitd's Health service on a unix socket.
 func startUpstream(t *testing.T) (*health.Server, string) {
@@ -42,14 +72,9 @@ func TestHealthProxy(t *testing.T) {
 
 	upstream, socket := startUpstream(t)
 
-	lis, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	go func() {
-		_ = Run(t.Context(), lis.Addr().String(), socket)
-	}()
-	require.NoError(t, lis.Close())
+	addr := startProxy(t, socket)
 
-	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 	client := healthpb.NewHealthClient(conn)
@@ -81,14 +106,9 @@ func TestHealthProxy(t *testing.T) {
 func TestHealthProxyUpstreamDown(t *testing.T) {
 	t.Parallel()
 
-	lis, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	go func() {
-		_ = Run(t.Context(), lis.Addr().String(), filepath.Join(t.TempDir(), "missing.sock"))
-	}()
-	require.NoError(t, lis.Close())
+	addr := startProxy(t, filepath.Join(t.TempDir(), "missing.sock"))
 
-	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
@@ -114,14 +134,9 @@ func TestReconnect(t *testing.T) {
 	}
 	upstream := startAt()
 
-	lis, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	go func() {
-		_ = Run(t.Context(), lis.Addr().String(), socket)
-	}()
-	require.NoError(t, lis.Close())
+	addr := startProxy(t, socket)
 
-	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 	client := healthpb.NewHealthClient(conn)
