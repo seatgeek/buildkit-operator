@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -59,9 +60,21 @@ func (v *BuildkitValidator) ValidateCreate(ctx context.Context, obj runtime.Obje
 		errorList = append(errorList, validateAgainstTemplate(bk, &template)...)
 	}
 
+	var warnings admission.Warnings
 	if bk.Spec.ClientCA != "" {
-		if _, err := tlsutil.ParseCACertPEM(bk.Spec.ClientCA); err != nil {
-			errorList = append(errorList, field.Invalid(field.NewPath("spec", "clientCA"), "<PEM omitted>", err.Error()))
+		caPath := field.NewPath("spec", "clientCA")
+		ca, err := tlsutil.ParseCACertPEM(bk.Spec.ClientCA)
+		now := time.Now()
+		switch {
+		case err != nil:
+			errorList = append(errorList, field.Invalid(caPath, "<PEM omitted>", err.Error()))
+		case now.After(ca.NotAfter):
+			errorList = append(errorList, field.Invalid(caPath, "<PEM omitted>", "CA certificate expired at "+ca.NotAfter.UTC().Format(time.RFC3339)))
+		case ca.NotBefore.After(now.Add(clockSkew)):
+			errorList = append(errorList, field.Invalid(caPath, "<PEM omitted>", "CA certificate is not valid until "+ca.NotBefore.UTC().Format(time.RFC3339)))
+		case template.Spec.RequireClientTLS && now.Add(tlsDeadline(&template)).After(ca.NotAfter):
+			// The instance may outlive the CA, after which no client can connect.
+			warnings = append(warnings, "spec.clientCA expires at "+ca.NotAfter.UTC().Format(time.RFC3339)+", before this instance's pod deadline")
 		}
 	}
 
@@ -76,7 +89,19 @@ func (v *BuildkitValidator) ValidateCreate(ctx context.Context, obj runtime.Obje
 		)
 	}
 
-	return nil, nil
+	return warnings, nil
+}
+
+// clockSkew tolerates a client CA issued on a machine whose clock runs a little ahead.
+const clockSkew = 5 * time.Minute
+
+// tlsDeadline is the pod deadline for a template that requires client TLS.
+func tlsDeadline(template *v1alpha1.BuildkitTemplate) time.Duration {
+	deadline := v1alpha1.DefaultTLSActiveDeadlineSeconds
+	if d := template.Spec.Lifecycle.ActiveDeadlineSeconds; d != nil {
+		deadline = *d
+	}
+	return time.Duration(deadline) * time.Second
 }
 
 func (v *BuildkitValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {

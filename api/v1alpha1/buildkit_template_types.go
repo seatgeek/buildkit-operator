@@ -12,6 +12,15 @@ import (
 
 const BuildkitTemplateNameMaxLength = 57
 
+const (
+	// DefaultTLSActiveDeadlineSeconds is the pod deadline for templates with RequireClientTLS that set
+	// no lifecycle.activeDeadlineSeconds (90 days). A pod's server certificate is issued to outlive it.
+	DefaultTLSActiveDeadlineSeconds int64 = 90 * 24 * 60 * 60
+	// MaxTLSActiveDeadlineSeconds caps the pod deadline, and so the server certificate lifetime, for
+	// templates with RequireClientTLS (366 days).
+	MaxTLSActiveDeadlineSeconds int64 = 366 * 24 * 60 * 60
+)
+
 // +genclient
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:shortName=buildkittemplate
@@ -43,6 +52,8 @@ type BuildkitTemplateSpec struct {
 	// spec.clientCA; only clients presenting a certificate signed by that CA can connect.
 	// Kubelet probes go through a health-only sidecar on HealthPort, since gRPC probes cannot present
 	// a client certificate.
+	// Each pod's server certificate is issued to outlive the pod, so its lifetime is bounded:
+	// lifecycle.activeDeadlineSeconds defaults to 90 days for these pods and may be at most 366 days.
 	// +kubebuilder:validation:Optional
 	RequireClientTLS bool `json:"requireClientTLS,omitempty"`
 
@@ -129,6 +140,8 @@ type BuildkitTemplatePodLifecycle struct {
 	// +kubebuilder:default=900
 	TerminationGracePeriodSeconds *int64 `json:"terminationGracePeriodSeconds,omitempty"`
 
+	// ActiveDeadlineSeconds is set on Buildkit pods. When RequireClientTLS is set it defaults to
+	// DefaultTLSActiveDeadlineSeconds and may be at most MaxTLSActiveDeadlineSeconds.
 	// +kubebuilder:validation:Optional
 	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
 

@@ -89,6 +89,23 @@ missing closing bracket`,
 			Expect(c.Create(ctx, buildkitTemplate)).To(MatchError(ContainSubstring("spec.healthPort must be between 1 and 65535")))
 		})
 
+		It("should cap the pod deadline when client TLS is required", func() {
+			tooLong := v1alpha1.MaxTLSActiveDeadlineSeconds + 1
+			buildkitTemplate := &v1alpha1.BuildkitTemplate{
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					RequireClientTLS: true,
+					Lifecycle:        v1alpha1.BuildkitTemplatePodLifecycle{ActiveDeadlineSeconds: &tooLong},
+				},
+			}
+			Expect(c.Create(ctx, buildkitTemplate)).To(MatchError(ContainSubstring("spec.lifecycle.activeDeadlineSeconds")))
+
+			maxDeadline := v1alpha1.MaxTLSActiveDeadlineSeconds
+			buildkitTemplate.Spec.Lifecycle.ActiveDeadlineSeconds = &maxDeadline
+			Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
+		})
+
 		It("should reject a [grpc] socket owner override when client TLS is required", func() {
 			buildkitTemplate := &v1alpha1.BuildkitTemplate{
 				Name:      "test-buildkit-template",

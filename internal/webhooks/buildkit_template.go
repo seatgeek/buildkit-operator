@@ -54,6 +54,14 @@ func (v *BuildkitTemplateValidator) validate(obj runtime.Object) (admission.Warn
 	}
 
 	if bkt.Spec.RequireClientTLS {
+		// Server certificates are issued to outlive the pod, so its deadline bounds their lifetime.
+		if d := bkt.Spec.Lifecycle.ActiveDeadlineSeconds; d != nil && (*d < 1 || *d > v1alpha1.MaxTLSActiveDeadlineSeconds) {
+			errorList = append(errorList, field.Invalid(
+				field.NewPath("spec", "lifecycle", "activeDeadlineSeconds"),
+				*d,
+				fmt.Sprintf("must be between 1 and %d (366 days) when spec.requireClientTLS is true", v1alpha1.MaxTLSActiveDeadlineSeconds),
+			))
+		}
 		if bkt.Spec.HealthPort < 1 || bkt.Spec.HealthPort > 65535 {
 			errorList = append(errorList, field.Invalid(
 				field.NewPath("spec", "healthPort"),

@@ -17,6 +17,11 @@ import (
 
 // CACertPEM returns a fresh self-signed CA certificate, PEM-encoded, for use as a Buildkit's clientCA.
 func CACertPEM() string {
+	return CACertPEMValid(time.Now().Add(-time.Minute), time.Now().Add(time.Hour))
+}
+
+// CACertPEMValid is CACertPEM with an explicit validity window.
+func CACertPEMValid(notBefore, notAfter time.Time) string {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		panic(err)
@@ -24,8 +29,8 @@ func CACertPEM() string {
 	tmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(time.Now().UnixNano()),
 		Subject:               pkix.Name{CommonName: "test-client-ca"},
-		NotBefore:             time.Now().Add(-time.Minute),
-		NotAfter:              time.Now().Add(time.Hour),
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageCertSign,
 		BasicConstraintsValid: true,
 		IsCA:                  true,

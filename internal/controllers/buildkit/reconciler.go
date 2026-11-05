@@ -51,10 +51,6 @@ type state = types.State[*v1alpha1.Buildkit]
 // TLSSecretLabel marks Secrets holding a Buildkit's TLS material.
 const TLSSecretLabel = "buildkit.seatgeek.io/tls"
 
-// serverCertValidity bounds the server certificate's lifetime. Buildkit instances are meant to be
-// short-lived; one outliving this needs recreating.
-const serverCertValidity = 30 * 24 * time.Hour
-
 // TLSConfig configures how the controller provisions mutual TLS for templates that require it.
 type TLSConfig struct {
 	// SecretClient reads, creates and deletes TLS Secrets, and re-reads Buildkits when the cache may be
@@ -71,6 +67,7 @@ type reconciler struct {
 	scheme *runtime.Scheme
 	log    *zap.SugaredLogger
 	tls    TLSConfig
+	now    func() time.Time
 }
 
 func (r *reconciler) runBuildkit() *state {
@@ -80,10 +77,11 @@ func (r *reconciler) runBuildkit() *state {
 		Transition: func(ctx context.Context, obj *v1alpha1.Buildkit, out *types.OutputSet) (*state, types.Result) {
 			log := r.log.With("name", obj.Name, "namespace", obj.Namespace)
 
-			requireTLS, err := r.templateRequiresTLS(ctx, obj)
+			template, err := r.getTemplate(ctx, obj)
 			if err != nil {
 				return nil, types.ErrorResult(err)
 			}
+			requireTLS := template != nil && template.Spec.RequireClientTLS
 
 			// Check if we already have any Buildkit pods
 			managedPods, err := r.getExistingManagedPods(ctx, obj, log)
@@ -94,7 +92,7 @@ func (r *reconciler) runBuildkit() *state {
 			var tlsOpts *TLSOptions
 			if requireTLS {
 				var stop *types.Result
-				if tlsOpts, stop, err = r.prepareTLS(ctx, obj, managedPods, out, log); err != nil {
+				if tlsOpts, stop, err = r.prepareTLS(ctx, obj, template, managedPods, out, log); err != nil {
 					return nil, types.ErrorResult(err)
 				} else if stop != nil {
 					return nil, *stop
@@ -166,6 +164,15 @@ func (r *reconciler) runBuildkit() *state {
 				log.Errorw("Buildkit pod does not have containers with ports defined", "pod", pod.Name)
 				return nil, types.ErrorResult(fmt.Errorf("buildkit pod %s does not have containers with ports defined", pod.Name))
 			}
+
+			if tlsOpts != nil {
+				if stop, err := r.reissueIfCertExpiresFirst(ctx, obj, template, pod, log); err != nil {
+					return nil, types.ErrorResult(err)
+				} else if stop != nil {
+					return nil, *stop
+				}
+			}
+
 			obj.Status.Endpoint = fmt.Sprintf("tcp://%s", net.JoinHostPort(pod.Status.PodIP, strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort))))
 
 			return nil, types.DoneResult()
@@ -251,7 +258,7 @@ func (r *reconciler) clearConnectionStatus(ctx context.Context, obj *v1alpha1.Bu
 
 // prepareTLS readies a Buildkit whose template requires client TLS. It returns the pod's TLS options,
 // or a terminal result when the Buildkit must not run.
-func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, managedPods []corev1.Pod, out *types.OutputSet, log *zap.SugaredLogger) (*TLSOptions, *types.Result, error) {
+func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, template *v1alpha1.BuildkitTemplate, managedPods []corev1.Pod, out *types.OutputSet, log *zap.SugaredLogger) (*TLSOptions, *types.Result, error) {
 	// A pod started before the template required TLS listens in plaintext and can't be upgraded in
 	// place, so remove it. A TLS pod replaces it if the Buildkit has a client CA.
 	if plaintext := podsWithoutTLS(managedPods); len(plaintext) > 0 {
@@ -283,8 +290,9 @@ func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, man
 		}, nil
 	}
 
-	// The webhook enforces this too; checking here keeps the controller safe without it.
-	if _, err := tlsutil.ParseCACertPEM(obj.Spec.ClientCA); err != nil {
+	// The webhook enforces this too; checking here keeps the controller safe without it, and catches a
+	// client CA that has expired since (no client could connect with it).
+	if problem := clientCAProblem(obj.Spec.ClientCA, r.now()); problem != "" {
 		if err := r.clearConnectionStatus(ctx, obj); err != nil {
 			return nil, nil, err
 		}
@@ -293,12 +301,18 @@ func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, man
 			CustomStatusCondition: &types.ResultStatusCondition{
 				Reason:  ReasonClientCAInvalid,
 				Status:  corev1.ConditionFalse,
-				Message: fmt.Sprintf("spec.clientCA is not a single PEM CA certificate: %s", err),
+				Message: "spec.clientCA " + problem,
 			},
 		}, nil
 	}
 
-	tlsOpts, serverCA, err := r.ensureTLSSecret(ctx, obj, log)
+	// A certificate for a pod about to be created must outlive it; a running pod's was checked when it
+	// started, so then the certificate only needs to be unexpired.
+	var validFor time.Duration
+	if len(managedPods) == 0 {
+		validFor = serverCertLifetime(template)
+	}
+	tlsOpts, serverCA, err := r.ensureTLSSecret(ctx, obj, template, validFor, log)
 	if err != nil {
 		// Stop advertising an instance whose TLS material can no longer be vouched for.
 		if clearErr := r.clearConnectionStatus(ctx, obj); clearErr != nil {
@@ -402,18 +416,64 @@ func (r *reconciler) forceDeletePods(ctx context.Context, pods []corev1.Pod, out
 	return nil
 }
 
-// templateRequiresTLS reports whether the Buildkit's template requires client TLS. A missing template
-// reports false; BuildPod fails on it before any pod could be created.
-func (r *reconciler) templateRequiresTLS(ctx context.Context, obj *v1alpha1.Buildkit) (bool, error) {
+// clientCAProblem describes why the client CA can't authenticate clients now, or returns "".
+func clientCAProblem(clientCA string, now time.Time) string {
+	ca, err := tlsutil.ParseCACertPEM(clientCA)
+	if err != nil {
+		return "is not a single PEM CA certificate: " + err.Error()
+	}
+	if now.After(ca.NotAfter) {
+		return "expired at " + ca.NotAfter.UTC().Format(time.RFC3339) + "; create a new Buildkit with a current CA"
+	}
+	return ""
+}
+
+// reissueIfCertExpiresFirst discards the server certificate if it would expire before the pod must
+// have stopped, so the next reconcile mints a longer-lived one and restarts the pod. Nothing has
+// connected yet: this runs before the pod is first advertised.
+func (r *reconciler) reissueIfCertExpiresFirst(ctx context.Context, obj *v1alpha1.Buildkit, template *v1alpha1.BuildkitTemplate, pod *corev1.Pod, log *zap.SugaredLogger) (*types.Result, error) {
+	outlived, err := r.certOutlivesPod(obj, template, pod)
+	if err != nil || outlived {
+		return nil, err
+	}
+
+	log.Infow("Server certificate would expire before the pod's deadline; issuing a new one", "pod", pod.Name)
+	if err := r.clearConnectionStatus(ctx, obj); err != nil {
+		return nil, err
+	}
+	p := []byte(`{"status":{"serverCertSHA256":null}}`)
+	if err := r.c.Status().Patch(ctx, obj, client.RawPatch(k8stypes.MergePatchType, p)); err != nil {
+		return nil, fmt.Errorf("discarding server certificate fingerprint: %w", err)
+	}
+	return &types.Result{Done: true, RequeueAfterCompletion: true, RequeueMsg: "Issuing a longer-lived server certificate", Reason: reasonApplyingChanges}, nil
+}
+
+// certOutlivesPod reports whether the advertised server certificate lasts until the pod must have
+// stopped: its actual start plus deadline and grace period. The certificate is issued with a margin
+// for scheduling delay, but a pod can wait in Pending for arbitrarily long.
+func (r *reconciler) certOutlivesPod(obj *v1alpha1.Buildkit, template *v1alpha1.BuildkitTemplate, pod *corev1.Pod) (bool, error) {
+	notAfter, err := tlsutil.NotAfter([]byte(obj.Status.ServerCA))
+	if err != nil {
+		return false, fmt.Errorf("reading server certificate expiry: %w", err)
+	}
+	started := r.now()
+	if pod.Status.StartTime != nil {
+		started = pod.Status.StartTime.Time
+	}
+	return !started.Add(tlsPodServingTime(template)).After(notAfter), nil
+}
+
+// getTemplate returns the Buildkit's template, or nil if it doesn't exist; BuildPod fails on a missing
+// template before any pod could be created.
+func (r *reconciler) getTemplate(ctx context.Context, obj *v1alpha1.Buildkit) (*v1alpha1.BuildkitTemplate, error) {
 	var template v1alpha1.BuildkitTemplate
 	if err := r.c.Get(ctx, client.ObjectKey{Namespace: obj.Namespace, Name: obj.Spec.Template}, &template); err != nil {
 		if apierrors.IsNotFound(err) {
-			return false, nil
+			return nil, nil //nolint:nilnil // a missing template is not an error here
 		}
-		return false, fmt.Errorf("getting BuildkitTemplate %s: %w", obj.Spec.Template, err)
+		return nil, fmt.Errorf("getting BuildkitTemplate %s: %w", obj.Spec.Template, err)
 	}
-
-	return template.Spec.RequireClientTLS, nil
+	return &template, nil
 }
 
 // podsWithoutTLS returns the pods whose buildkitd doesn't require client certificates. It checks the
@@ -449,7 +509,7 @@ const tlsSecretSuffixLength = 16
 // operator can write. If it is missing, or the operator can't vouch for its contents (an owner
 // reference alone proves nothing: anyone who can create Secrets can forge one), a new certificate is
 // minted into a new Secret.
-func (r *reconciler) ensureTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit, log *zap.SugaredLogger) (*TLSOptions, string, error) {
+func (r *reconciler) ensureTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit, template *v1alpha1.BuildkitTemplate, validFor time.Duration, log *zap.SugaredLogger) (*TLSOptions, string, error) {
 	if r.tls.SecretClient == nil || r.tls.HealthProxyImage == "" || !slices.Contains(r.tls.Namespaces, obj.Namespace) {
 		return nil, "", fmt.Errorf("operator is not configured to manage TLS secrets in namespace %s", obj.Namespace)
 	}
@@ -462,12 +522,12 @@ func (r *reconciler) ensureTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit
 	}
 	obj.Status.ServerCertSHA256 = fresh.Status.ServerCertSHA256
 
-	secret, found, err := r.currentTLSSecret(ctx, obj, log)
+	secret, found, err := r.currentTLSSecret(ctx, obj, validFor, log)
 	if err != nil {
 		return nil, "", err
 	}
 	if !found {
-		if secret, err = r.mintTLSSecret(ctx, obj, log); err != nil {
+		if secret, err = r.mintTLSSecret(ctx, obj, serverCertLifetime(template), log); err != nil {
 			return nil, "", err
 		}
 	}
@@ -475,10 +535,11 @@ func (r *reconciler) ensureTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit
 	return &TLSOptions{SecretName: secret.Name, HealthProxyImage: r.tls.HealthProxyImage}, string(secret.Data[corev1.TLSCertKey]), nil
 }
 
-// currentTLSSecret returns the Secret for the recorded fingerprint if the operator can vouch for it;
-// found is false when a new certificate must be minted. An unvouched Secret claiming this Buildkit is deleted;
+// currentTLSSecret returns the Secret for the recorded fingerprint if the operator can vouch for it
+// and its certificate lasts at least validFor more; found is false when a new certificate must be
+// minted. An unvouched Secret claiming this Buildkit is deleted;
 // one that doesn't claim it is left alone.
-func (r *reconciler) currentTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit, log *zap.SugaredLogger) (secret *corev1.Secret, found bool, err error) {
+func (r *reconciler) currentTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit, validFor time.Duration, log *zap.SugaredLogger) (secret *corev1.Secret, found bool, err error) {
 	if obj.Status.ServerCertSHA256 == "" {
 		return nil, false, nil
 	}
@@ -496,7 +557,13 @@ func (r *reconciler) currentTLSSecret(ctx context.Context, obj *v1alpha1.Buildki
 		log.Infow("Not using TLS secret", "secret", key.Name, "problem", "not controlled by this Buildkit")
 		return nil, false, nil
 	}
-	if problem := trustProblem(obj, secret); problem != "" {
+	problem := trustProblem(obj, secret)
+	if problem == "" {
+		if notAfter, _ := tlsutil.NotAfter(secret.Data[corev1.TLSCertKey]); r.now().Add(validFor).After(notAfter) {
+			problem = "server certificate expires before the pod would finish"
+		}
+	}
+	if problem != "" {
 		log.Infow("Replacing TLS secret", "secret", key.Name, "problem", problem)
 		if err := r.tls.SecretClient.Delete(ctx, secret, client.Preconditions{UID: &secret.UID}); err != nil && !apierrors.IsNotFound(err) {
 			return nil, false, fmt.Errorf("deleting TLS secret %s: %w", key.Name, err)
@@ -530,8 +597,8 @@ func trustProblem(obj *v1alpha1.Buildkit, secret *corev1.Secret) string {
 
 // mintTLSSecret generates a server certificate, stores it in a new Secret named for its fingerprint,
 // and records the fingerprint in status before anything can use the Secret.
-func (r *reconciler) mintTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit, log *zap.SugaredLogger) (*corev1.Secret, error) {
-	certPEM, keyPEM, err := tlsutil.GenerateServerCert(obj.Name, serverCertValidity, time.Now())
+func (r *reconciler) mintTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit, validity time.Duration, log *zap.SugaredLogger) (*corev1.Secret, error) {
+	certPEM, keyPEM, err := tlsutil.GenerateServerCert(obj.Name, validity, r.now())
 	if err != nil {
 		return nil, fmt.Errorf("generating server certificate: %w", err)
 	}
@@ -620,6 +687,7 @@ func SetupController(
 		scheme: mgr.GetScheme(),
 		log:    log,
 		tls:    tlsConfig,
+		now:    time.Now,
 	}
 
 	builder := fsm.NewBuilder(

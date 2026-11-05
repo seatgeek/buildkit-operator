@@ -112,3 +112,16 @@ func ValidateServerKeyPair(certPEM, keyPEM []byte, serverName string) error {
 	}
 	return leaf.VerifyHostname(serverName)
 }
+
+// NotAfter returns the expiry of the first PEM certificate.
+func NotAfter(certPEM []byte) (time.Time, error) {
+	block, _ := pem.Decode(certPEM)
+	if block == nil || block.Type != pemCertificate {
+		return time.Time{}, errors.New("expected a PEM-encoded CERTIFICATE block")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parsing certificate: %w", err)
+	}
+	return cert.NotAfter, nil
+}

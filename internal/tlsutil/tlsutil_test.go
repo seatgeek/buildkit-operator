@@ -151,3 +151,18 @@ func caCertPEM(t *testing.T, usage x509.KeyUsage) string {
 	require.NoError(t, err)
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 }
+
+func TestNotAfter(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().Truncate(time.Second)
+	certPEM, _, err := GenerateServerCert("a", 2*time.Hour, now)
+	require.NoError(t, err)
+
+	got, err := NotAfter(certPEM)
+	require.NoError(t, err)
+	assert.True(t, got.Equal(now.Add(2*time.Hour)), "got %s", got)
+
+	_, err = NotAfter([]byte("not pem"))
+	require.Error(t, err)
+}

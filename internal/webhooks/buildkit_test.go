@@ -7,6 +7,7 @@ package webhooks
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -183,6 +184,28 @@ var _ = Describe("BuildkitValidator", func() {
 			}
 
 			Expect(c.Create(ctx, buildkit)).To(MatchError(ContainSubstring("metadata.name")))
+		})
+
+		It("should reject a clientCA outside its validity window", func() {
+			expired := &v1alpha1.Buildkit{
+				Name:      "expired-ca",
+				Namespace: namespace,
+				Spec: v1alpha1.BuildkitSpec{
+					Template: tlsTemplateName,
+					ClientCA: test.CACertPEMValid(time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour)),
+				},
+			}
+			Expect(c.Create(ctx, expired)).To(MatchError(ContainSubstring("CA certificate expired at")))
+
+			future := &v1alpha1.Buildkit{
+				Name:      "future-ca",
+				Namespace: namespace,
+				Spec: v1alpha1.BuildkitSpec{
+					Template: tlsTemplateName,
+					ClientCA: test.CACertPEMValid(time.Now().Add(time.Hour), time.Now().Add(2*time.Hour)),
+				},
+			}
+			Expect(c.Create(ctx, future)).To(MatchError(ContainSubstring("CA certificate is not valid until")))
 		})
 
 		It("should reject a clientCA that is not a CA certificate", func() {

@@ -96,6 +96,8 @@ By default buildkitd accepts any client that can reach its port. When several te
 
 1. The client generates its own CA and a client certificate signed by it, and puts only the CA certificate in the `Buildkit`'s `spec.clientCA` (immutable). Private keys never leave the client.
 2. The operator generates a server certificate for that instance, stores it in an immutable Secret owned by the `Buildkit` and named after the certificate's fingerprint (`<name>-tls-<16 hex>`), and starts buildkitd with `--tlscacert` set to the client CA, so connections without a certificate signed by it are refused. A `Buildkit`'s name can be at most 232 characters when its template requires TLS.
+
+   The certificate is issued to outlive the pod, so TLS pods always have a deadline: `lifecycle.activeDeadlineSeconds` defaults to 90 days for these templates and may be at most 366 days. Each certificate lasts the deadline plus the termination grace period plus an hour for scheduling delay, and the operator re-checks it against the pod's actual start time before advertising the pod (issuing a new one and restarting the pod if it started too late). A running pod's certificate is never rotated, so builds aren't interrupted; long-lived instances end at their deadline instead. The client CA must be valid when the `Buildkit` is created; you get a warning if it expires before the pod's deadline.
 3. Once ready, the status carries what the client needs to verify the server:
 
 ```yaml

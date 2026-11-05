@@ -6,6 +6,7 @@ metadata:
     app.kubernetes.io/name: buildkit
   namespace: test-ns
 spec:
+  activeDeadlineSeconds: 7776000
   containers:
   - args:
     - --addr

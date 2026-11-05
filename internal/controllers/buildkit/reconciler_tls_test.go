@@ -147,6 +147,13 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 		pod := pods.Items[0]
 		Expect(pod.Spec.Containers[0].Args).To(ContainElement("--tlscacert"))
 		Expect(mountedSecret(pod)).To(Equal(secret.Name))
+		Expect(pod.Spec.ActiveDeadlineSeconds).To(Equal(new(v1alpha1.DefaultTLSActiveDeadlineSeconds)), "TLS pods always get a deadline")
+		notAfter, err := tlsutil.NotAfter(secret.Data[corev1.TLSCertKey])
+		Expect(err).NotTo(HaveOccurred())
+		// Deadline, then the template's grace period (defaulted to 900s by the CRD), then the margin for
+		// scheduling delay.
+		expectedNotAfter := secret.CreationTimestamp.Add(time.Duration(v1alpha1.DefaultTLSActiveDeadlineSeconds+900)*time.Second + time.Hour)
+		Expect(notAfter).To(BeTemporally("~", expectedNotAfter, 2*time.Minute))
 		Expect(secret.Immutable).NotTo(BeNil())
 		Expect(*secret.Immutable).To(BeTrue())
 		Expect(pod.Spec.InitContainers).To(HaveLen(1))
@@ -411,6 +418,24 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 				Reason: buildkit.ReasonClientCAInvalid,
 			}))
 		}).Should(Succeed())
+		By("refusing a client CA that has expired")
+		expired := &v1alpha1.Buildkit{
+			Name:      "expired-ca",
+			Namespace: tlsBadCANamespace,
+			Spec: v1alpha1.BuildkitSpec{
+				Template: template.Name,
+				ClientCA: test.CACertPEMValid(time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour)),
+			},
+		}
+		Expect(c.Create(ctx, expired)).To(Succeed())
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(expired), &updated)).To(Succeed())
+			cond := updated.GetCondition(v1alpha1.TypeDeployed)
+			g.Expect(cond.Reason).To(Equal(buildkit.ReasonClientCAInvalid))
+			g.Expect(cond.Message).To(ContainSubstring("expired at"))
+		}).Should(Succeed())
+
 		var pods corev1.PodList
 		Consistently(func(g Gomega) {
 			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsBadCANamespace))).To(Succeed())
@@ -715,6 +740,93 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 				mounts = append(mounts, mountedSecret(pod))
 			}
 			g.Expect(mounts).To(ContainElement(secret.Name))
+		}).Should(Succeed())
+	})
+
+	It("issues a new certificate when the current one wouldn't outlive the pod", func() {
+		Expect(c.Create(ctx, &corev1.Namespace{Name: tlsLifetimeNamespace})).To(Succeed())
+		cleanupNamespace(tlsLifetimeNamespace)
+		DeferCleanup(func() {
+			Expect(c.DeleteAllOf(ctx, &corev1.Secret{}, client.InNamespace(tlsLifetimeNamespace))).To(Succeed())
+		})
+
+		deadline := int64(600)
+		grace := int64(0)
+		template := &v1alpha1.BuildkitTemplate{
+			Name:      "lifetime-template",
+			Namespace: tlsLifetimeNamespace,
+			Spec: v1alpha1.BuildkitTemplateSpec{
+				Port: 1234, HealthPort: 1235, RequireClientTLS: true,
+				Lifecycle: v1alpha1.BuildkitTemplatePodLifecycle{ActiveDeadlineSeconds: &deadline, TerminationGracePeriodSeconds: &grace},
+			},
+		}
+		Expect(c.Create(ctx, template)).To(Succeed())
+		bk := &v1alpha1.Buildkit{
+			Name:      "lifetime",
+			Namespace: tlsLifetimeNamespace,
+			Spec:      v1alpha1.BuildkitSpec{Template: template.Name, ClientCA: testClientCA()},
+		}
+		Expect(c.Create(ctx, bk)).To(Succeed())
+
+		var pods corev1.PodList
+		var first corev1.Secret
+		Eventually(func(g Gomega) {
+			first = currentSecret(g, bk)
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsLifetimeNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+		}).Should(Succeed())
+		firstPod := pods.Items[0]
+		Expect(firstPod.Spec.ActiveDeadlineSeconds).To(Equal(&deadline))
+
+		By("re-issuing before advertising a pod that started too late for its certificate")
+		// The certificate covers the 10-minute deadline plus an hour for scheduling; a pod that only
+		// started two hours later would outlive it.
+		Eventually(func(g Gomega) {
+			var pod corev1.Pod
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(&firstPod), &pod)).To(Succeed())
+			pod.Status.Phase = corev1.PodRunning
+			pod.Status.PodIP = "10.0.0.1"
+			pod.Status.StartTime = &metav1.Time{Time: time.Now().Add(2 * time.Hour)}
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "buildkit", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+			}
+			g.Expect(c.Status().Update(ctx, &pod)).To(Succeed())
+		}).Should(Succeed())
+		var second corev1.Secret
+		Eventually(func(g Gomega) {
+			second = currentSecret(g, bk)
+			g.Expect(second.Name).NotTo(Equal(first.Name))
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsLifetimeNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+			g.Expect(pods.Items[0].Name).NotTo(Equal(firstPod.Name))
+			g.Expect(mountedSecret(pods.Items[0])).To(Equal(second.Name))
+		}).Should(Succeed())
+		Consistently(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).To(BeEmpty(), "the late pod was never advertised")
+		}, "1s").Should(Succeed())
+
+		By("re-issuing for a new pod when the template's deadline grew past the current certificate")
+		longer := int64(4 * 60 * 60)
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.BuildkitTemplate
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(template), &updated)).To(Succeed())
+			updated.Spec.Lifecycle.ActiveDeadlineSeconds = &longer
+			g.Expect(c.Update(ctx, &updated)).To(Succeed())
+		}).Should(Succeed())
+		secondPod := pods.Items[0]
+		Expect(c.Delete(ctx, &secondPod)).To(Succeed())
+		Eventually(func(g Gomega) {
+			third := currentSecret(g, bk)
+			g.Expect(third.Name).NotTo(Equal(second.Name))
+			notAfter, err := tlsutil.NotAfter(third.Data[corev1.TLSCertKey])
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(notAfter).To(BeTemporally(">", time.Now().Add(time.Duration(longer)*time.Second)))
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsLifetimeNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+			g.Expect(mountedSecret(pods.Items[0])).To(Equal(third.Name))
+			g.Expect(pods.Items[0].Spec.ActiveDeadlineSeconds).To(Equal(&longer))
 		}).Should(Succeed())
 	})
 })

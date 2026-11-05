@@ -80,6 +80,9 @@ spec:
                   pods
                 properties:
                   activeDeadlineSeconds:
+                    description: |-
+                      ActiveDeadlineSeconds is set on Buildkit pods. When RequireClientTLS is set it defaults to
+                      DefaultTLSActiveDeadlineSeconds and may be at most MaxTLSActiveDeadlineSeconds.
                     format: int64
                     type: integer
                   preStopScript:
@@ -139,6 +142,8 @@ spec:
                   spec.clientCA; only clients presenting a certificate signed by that CA can connect.
                   Kubelet probes go through a health-only sidecar on HealthPort, since gRPC probes cannot present
                   a client certificate.
+                  Each pod's server certificate is issued to outlive the pod, so its lifetime is bounded:
+                  lifecycle.activeDeadlineSeconds defaults to 90 days for these pods and may be at most 366 days.
                 type: boolean
               resources:
                 properties:

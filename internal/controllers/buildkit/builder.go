@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -23,6 +24,34 @@ import (
 
 // SecretClientCAKey is the TLS Secret key holding the Buildkit's client CA.
 const SecretClientCAKey = "ca.crt"
+
+// serverCertMargin is added to a TLS pod's lifetime when issuing its certificate. A pod's deadline
+// counts from when it starts, which can be well after the certificate is issued (scheduling, node
+// scale-up, image pulls); the controller re-checks against the actual start time before advertising.
+const serverCertMargin = time.Hour
+
+// tlsPodDeadline returns the activeDeadlineSeconds a TLS pod runs with.
+func tlsPodDeadline(template *v1alpha1.BuildkitTemplate) int64 {
+	if d := template.Spec.Lifecycle.ActiveDeadlineSeconds; d != nil {
+		return *d
+	}
+	return v1alpha1.DefaultTLSActiveDeadlineSeconds
+}
+
+// tlsPodServingTime is the longest a TLS pod can serve once started: its deadline, then its
+// termination grace period.
+func tlsPodServingTime(template *v1alpha1.BuildkitTemplate) time.Duration {
+	grace := int64(corev1.DefaultTerminationGracePeriodSeconds)
+	if g := template.Spec.Lifecycle.TerminationGracePeriodSeconds; g != nil {
+		grace = *g
+	}
+	return time.Duration(tlsPodDeadline(template)+grace) * time.Second
+}
+
+// serverCertLifetime is how long a certificate issued for a new TLS pod must last.
+func serverCertLifetime(template *v1alpha1.BuildkitTemplate) time.Duration {
+	return tlsPodServingTime(template) + serverCertMargin
+}
 
 // tlsCACertFlag makes buildkitd require client certificates signed by the given CA. Its presence in a
 // pod's args is how the controller tells a TLS pod from a plaintext one.
@@ -321,6 +350,9 @@ func (b *Builder) configureTLS(pod *corev1.Pod, template *v1alpha1.BuildkitTempl
 		corev1.VolumeMount{Name: tlsVolumeName, MountPath: tlsMountPath, ReadOnly: true},
 		corev1.VolumeMount{Name: socketVolumeName, MountPath: socketDir},
 	)
+
+	// The server certificate is issued to outlive the pod, so the pod must have a deadline.
+	pod.Spec.ActiveDeadlineSeconds = new(tlsPodDeadline(template))
 
 	container.Args = append(container.Args,
 		"--tlscert", path.Join(tlsMountPath, corev1.TLSCertKey),
