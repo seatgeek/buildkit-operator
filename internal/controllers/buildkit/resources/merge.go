@@ -13,7 +13,7 @@ import (
 // ApplyMaximums checks the desired resource requirements against a maximum set of limits.
 // Any desired requests or limits that exceed the maximum limits are reduced to the maximum.
 // Any requests that exceed the maximum limits are also reduced to the maximum.
-// Any missing limits are filled in with the maximum values.
+// Any missing, zero, or negative limits are filled in with the maximum values.
 // Multiple desired resource requirements can be provided, and they will be merged together (with the later ones taking precedence).
 // The function will return the merged resource requirements and a boolean indicating if any modifications were made.
 func ApplyMaximums(maximum corev1.ResourceList, desired ...corev1.ResourceRequirements) (result corev1.ResourceRequirements, modified bool) {
@@ -36,9 +36,10 @@ func ApplyMaximums(maximum corev1.ResourceList, desired ...corev1.ResourceRequir
 		}
 	}
 
-	// Fill in missing limits with maximum values
+	// Fill in missing limits with maximum values. A zero or negative limit is treated as missing,
+	// since Kubernetes interprets a zero limit as "unbounded" rather than "nothing allowed".
 	for key, maxValue := range maximum {
-		if _, exists := result.Limits[key]; !exists {
+		if existing, exists := result.Limits[key]; !exists || existing.Sign() <= 0 {
 			if result.Limits == nil {
 				result.Limits = make(corev1.ResourceList)
 			}
