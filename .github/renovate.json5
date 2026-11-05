@@ -3,7 +3,9 @@
   extends: [
     'config:recommended',
     'mergeConfidence:all-badges',
+    'helpers:pinGitHubActionDigestsToSemver',
   ],
+  minimumReleaseAge: '7 days',
   prConcurrentLimit: 5,
   prHourlyLimit: 2,
   dependencyDashboard: true,
@@ -66,7 +68,42 @@
         'digest',
       ],
       automerge: true,
-      minimumReleaseAge: '3 days',
+    },
+    {
+      description: 'Update CI and Makefile tooling during the first week of each month (k8s.io deps follow the kubernetes group instead)',
+      matchManagers: [
+        'github-actions',
+        'custom.regex',
+      ],
+      matchPackageNames: [
+        '!k8s.io/**',
+      ],
+      schedule: [
+        '* * 1-7 * *',
+      ],
+    },
+    {
+      description: 'Batch GitHub Actions version updates into a single PR; digest and pin updates stay separate so they cannot block or un-automerge the batch',
+      matchManagers: [
+        'github-actions',
+      ],
+      matchUpdateTypes: [
+        'major',
+        'minor',
+        'patch',
+      ],
+      groupName: 'GitHub Actions',
+    },
+    {
+      description: 'Require approval for GitHub Actions digest changes that have no new version tag',
+      matchManagers: [
+        'github-actions',
+      ],
+      matchUpdateTypes: [
+        'digest',
+      ],
+      automerge: false,
+      dependencyDashboardApproval: true,
     },
     {
       description: 'Auto-merge non-major test deps (package-based)',
@@ -80,7 +117,6 @@
         'digest',
       ],
       automerge: true,
-      minimumReleaseAge: '3 days',
     },
     {
       description: 'Group yq updates together',
