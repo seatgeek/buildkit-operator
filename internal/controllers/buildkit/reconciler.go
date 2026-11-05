@@ -259,6 +259,14 @@ func (r *reconciler) clearConnectionStatus(ctx context.Context, obj *v1alpha1.Bu
 // prepareTLS readies a Buildkit whose template requires client TLS. It returns the pod's TLS options,
 // or a terminal result when the Buildkit must not run.
 func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, template *v1alpha1.BuildkitTemplate, managedPods []corev1.Pod, out *types.OutputSet, log *zap.SugaredLogger) (*TLSOptions, *types.Result, error) {
+	// The pod may have vanished before this controller saw it terminating; don't leave its endpoint
+	// advertised alongside the certificate prepared for its replacement.
+	if len(managedPods) == 0 {
+		if err := r.clearConnectionStatus(ctx, obj); err != nil {
+			return nil, nil, err
+		}
+	}
+
 	// A pod started before the template required TLS listens in plaintext and can't be upgraded in
 	// place, so remove it. A TLS pod replaces it if the Buildkit has a client CA.
 	if plaintext := podsWithoutTLS(managedPods); len(plaintext) > 0 {
@@ -416,7 +424,8 @@ func (r *reconciler) forceDeletePods(ctx context.Context, pods []corev1.Pod, out
 	return nil
 }
 
-// clientCAProblem describes why the client CA can't authenticate clients now, or returns "".
+// clientCAProblem describes why the client CA can't authenticate clients now, or returns "". It
+// mirrors the webhook's checks so the controller is safe without it.
 func clientCAProblem(clientCA string, now time.Time) string {
 	ca, err := tlsutil.ParseCACertPEM(clientCA)
 	if err != nil {
@@ -424,6 +433,9 @@ func clientCAProblem(clientCA string, now time.Time) string {
 	}
 	if now.After(ca.NotAfter) {
 		return "expired at " + ca.NotAfter.UTC().Format(time.RFC3339) + "; create a new Buildkit with a current CA"
+	}
+	if ca.NotBefore.After(now.Add(tlsutil.ClockSkew)) {
+		return "is not valid until " + ca.NotBefore.UTC().Format(time.RFC3339)
 	}
 	return ""
 }
@@ -445,11 +457,14 @@ func (r *reconciler) reissueIfCertExpiresFirst(ctx context.Context, obj *v1alpha
 	if err := r.c.Status().Patch(ctx, obj, client.RawPatch(k8stypes.MergePatchType, p)); err != nil {
 		return nil, fmt.Errorf("discarding server certificate fingerprint: %w", err)
 	}
+	// Decoding the response leaves omitted fields as they were; without this, the FSM's final status
+	// write would put the fingerprint back.
+	obj.Status.ServerCertSHA256 = ""
 	return &types.Result{Done: true, RequeueAfterCompletion: true, RequeueMsg: "Issuing a longer-lived server certificate", Reason: reasonApplyingChanges}, nil
 }
 
 // certOutlivesPod reports whether the advertised server certificate lasts until the pod must have
-// stopped: its actual start plus deadline and grace period. The certificate is issued with a margin
+// stopped: its actual start plus its own deadline and grace period. The certificate is issued with a margin
 // for scheduling delay, but a pod can wait in Pending for arbitrarily long.
 func (r *reconciler) certOutlivesPod(obj *v1alpha1.Buildkit, template *v1alpha1.BuildkitTemplate, pod *corev1.Pod) (bool, error) {
 	notAfter, err := tlsutil.NotAfter([]byte(obj.Status.ServerCA))
@@ -460,7 +475,20 @@ func (r *reconciler) certOutlivesPod(obj *v1alpha1.Buildkit, template *v1alpha1.
 	if pod.Status.StartTime != nil {
 		started = pod.Status.StartTime.Time
 	}
-	return !started.Add(tlsPodServingTime(template)).After(notAfter), nil
+	return !started.Add(podServingTime(pod, template)).After(notAfter), nil
+}
+
+// podServingTime is how long a started pod can serve, from its own spec: a template changed since
+// only affects replacement pods.
+func podServingTime(pod *corev1.Pod, template *v1alpha1.BuildkitTemplate) time.Duration {
+	if pod.Spec.ActiveDeadlineSeconds == nil {
+		return tlsPodServingTime(template)
+	}
+	grace := int64(corev1.DefaultTerminationGracePeriodSeconds)
+	if pod.Spec.TerminationGracePeriodSeconds != nil {
+		grace = *pod.Spec.TerminationGracePeriodSeconds
+	}
+	return time.Duration(*pod.Spec.ActiveDeadlineSeconds+grace) * time.Second
 }
 
 // getTemplate returns the Buildkit's template, or nil if it doesn't exist; BuildPod fails on a missing

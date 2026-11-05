@@ -202,9 +202,20 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 		Expect(c.Status().Patch(ctx, &v1alpha1.Buildkit{Name: bk.Name, Namespace: bk.Namespace},
 			client.RawPatch(types.MergePatchType, []byte(`{"status":{"serverCertSHA256":null}}`)))).To(Succeed())
 		nudgePod(client.ObjectKeyFromObject(&rotatedPod))
-		expectRotated(rotated, rotatedPod.Name)
+		_, latestPod := expectRotated(rotated, rotatedPod.Name)
 		Eventually(func(g Gomega) {
 			g.Expect(apierrors.IsNotFound(c.Get(ctx, client.ObjectKeyFromObject(&rotated), &corev1.Secret{}))).To(BeTrue())
+		}).Should(Succeed())
+
+		By("withdrawing the endpoint when the pod vanishes before it is seen terminating")
+		Expect(c.Delete(ctx, &latestPod)).To(Succeed())
+		Eventually(func(g Gomega) {
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+			g.Expect(pods.Items[0].Name).NotTo(Equal(latestPod.Name))
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).To(BeEmpty(), "no endpoint until the replacement is ready")
 		}).Should(Succeed())
 	})
 
@@ -434,6 +445,24 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 			cond := updated.GetCondition(v1alpha1.TypeDeployed)
 			g.Expect(cond.Reason).To(Equal(buildkit.ReasonClientCAInvalid))
 			g.Expect(cond.Message).To(ContainSubstring("expired at"))
+		}).Should(Succeed())
+
+		By("refusing a client CA that isn't valid yet")
+		future := &v1alpha1.Buildkit{
+			Name:      "future-ca",
+			Namespace: tlsBadCANamespace,
+			Spec: v1alpha1.BuildkitSpec{
+				Template: template.Name,
+				ClientCA: test.CACertPEMValid(time.Now().Add(time.Hour), time.Now().Add(2*time.Hour)),
+			},
+		}
+		Expect(c.Create(ctx, future)).To(Succeed())
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(future), &updated)).To(Succeed())
+			cond := updated.GetCondition(v1alpha1.TypeDeployed)
+			g.Expect(cond.Reason).To(Equal(buildkit.ReasonClientCAInvalid))
+			g.Expect(cond.Message).To(ContainSubstring("is not valid until"))
 		}).Should(Succeed())
 
 		var pods corev1.PodList
@@ -828,5 +857,30 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 			g.Expect(mountedSecret(pods.Items[0])).To(Equal(third.Name))
 			g.Expect(pods.Items[0].Spec.ActiveDeadlineSeconds).To(Equal(&longer))
 		}).Should(Succeed())
+
+		By("leaving a running pod alone when the template's deadline grows again")
+		runningPod := pods.Items[0]
+		markPodReady(client.ObjectKeyFromObject(&runningPod))
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).NotTo(BeEmpty())
+		}).Should(Succeed())
+		muchLonger := int64(48 * 60 * 60)
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.BuildkitTemplate
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(template), &updated)).To(Succeed())
+			updated.Spec.Lifecycle.ActiveDeadlineSeconds = &muchLonger
+			g.Expect(c.Update(ctx, &updated)).To(Succeed())
+		}).Should(Succeed())
+		nudgePod(client.ObjectKeyFromObject(&runningPod))
+		Consistently(func(g Gomega) {
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsLifetimeNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+			g.Expect(pods.Items[0].Name).To(Equal(runningPod.Name))
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).NotTo(BeEmpty())
+		}, "2s").Should(Succeed())
 	})
 })
