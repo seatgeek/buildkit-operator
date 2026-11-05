@@ -83,6 +83,14 @@ func (v *BuildkitTemplateValidator) validate(obj runtime.Object) (admission.Warn
 			bkt.Spec.BuildkitdToml,
 			reason,
 		))
+	} else if bkt.Spec.RequireClientTLS && setsSocketOwner(tmp) {
+		// The health sidecar joins the group buildkitd gives its unix socket by default (0, or 1000
+		// when rootless); a different owner would lock it out and fail every probe.
+		errorList = append(errorList, field.Invalid(
+			field.NewPath("spec", "buildkitdToml"),
+			"[grpc] uid/gid",
+			"[grpc] uid and gid can't be set when spec.requireClientTLS is true",
+		))
 	}
 
 	if len(errorList) > 0 {
@@ -150,3 +158,18 @@ func (b BuildkitTemplateDefaulter) Default(_ context.Context, obj runtime.Object
 }
 
 var _ webhook.CustomDefaulter = (*BuildkitTemplateDefaulter)(nil)
+
+// setsSocketOwner reports whether decoded buildkitd TOML sets [grpc] uid or gid.
+func setsSocketOwner(config any) bool {
+	root, ok := config.(map[string]any)
+	if !ok {
+		return false
+	}
+	grpcConfig, ok := root["grpc"].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, uid := grpcConfig["uid"]
+	_, gid := grpcConfig["gid"]
+	return uid || gid
+}

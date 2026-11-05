@@ -89,6 +89,21 @@ missing closing bracket`,
 			Expect(c.Create(ctx, buildkitTemplate)).To(MatchError(ContainSubstring("spec.healthPort must be between 1 and 65535")))
 		})
 
+		It("should reject a [grpc] socket owner override when client TLS is required", func() {
+			buildkitTemplate := &v1alpha1.BuildkitTemplate{
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					RequireClientTLS: true,
+					BuildkitdToml:    "[grpc]\n  gid = 2000\n",
+				},
+			}
+			Expect(c.Create(ctx, buildkitTemplate)).To(MatchError(ContainSubstring("[grpc] uid and gid can't be set")))
+
+			buildkitTemplate.Spec.RequireClientTLS = false
+			Expect(c.Create(ctx, buildkitTemplate)).To(Succeed(), "allowed when the sidecar isn't used")
+		})
+
 		It("should accept empty TOML", func() {
 			buildkitTemplate := &v1alpha1.BuildkitTemplate{
 				Name:      "test-buildkit-template",
