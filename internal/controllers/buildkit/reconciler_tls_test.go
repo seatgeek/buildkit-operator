@@ -5,6 +5,7 @@
 package buildkit_test
 
 import (
+	"maps"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -141,7 +142,7 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 
 		By("restarting the pod when its Secret is replaced, so status matches the served certificate")
 		Expect(c.Delete(ctx, &secret)).To(Succeed())
-		markPodReady(client.ObjectKeyFromObject(&pod)) // any pod event triggers a reconcile
+		nudgePod(client.ObjectKeyFromObject(&pod))
 		Eventually(func(g Gomega) {
 			var replaced corev1.Secret
 			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(&secret), &replaced)).To(Succeed())
@@ -324,18 +325,44 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 		Expect(c.Create(ctx, impostor)).To(Succeed())
 		expectReplaced(forged, *impostor)
 
+		// swapSecret stands in for someone who can delete and create Secrets: the operator's Secrets are
+		// immutable, so changing one means recreating it, owner reference and all.
+		swapSecret := func(original corev1.Secret, mutate func(*corev1.Secret)) corev1.Secret {
+			GinkgoHelper()
+			Expect(c.Delete(ctx, &original)).To(Succeed())
+			swapped := corev1.Secret{
+				Name:            original.Name,
+				Namespace:       original.Namespace,
+				OwnerReferences: original.OwnerReferences,
+				Type:            original.Type,
+				Immutable:       original.Immutable,
+				Data:            maps.Clone(original.Data),
+			}
+			mutate(&swapped)
+			Expect(c.Create(ctx, &swapped)).To(Succeed())
+			return swapped
+		}
+
+		By("creating its Secrets immutable")
+		Expect(original.Immutable).NotTo(BeNil())
+		Expect(*original.Immutable).To(BeTrue())
+
 		By("replacing its own Secret once the client CA no longer matches the spec")
 		tampered, tamperedSecret := startTLS("tampered")
-		tamperedSecret.Data[buildkit.SecretClientCAKey] = []byte(testClientCA())
-		Expect(c.Update(ctx, &tamperedSecret)).To(Succeed())
-		expectReplaced(tampered, tamperedSecret)
+		expectReplaced(tampered, swapSecret(tamperedSecret, func(s *corev1.Secret) {
+			s.Data[buildkit.SecretClientCAKey] = []byte(testClientCA())
+		}))
 
 		By("replacing its own Secret once the server key is unusable")
 		keyless, keylessSecret := startTLS("keyless")
-		// Type kubernetes.io/tls requires the key to be present, but not non-empty.
-		keylessSecret.Data[corev1.TLSPrivateKeyKey] = []byte{}
-		Expect(c.Update(ctx, &keylessSecret)).To(Succeed())
-		expectReplaced(keyless, keylessSecret)
+		expectReplaced(keyless, swapSecret(keylessSecret, func(s *corev1.Secret) {
+			// Type kubernetes.io/tls requires the key to be present, but not non-empty.
+			s.Data[corev1.TLSPrivateKeyKey] = []byte{}
+		}))
+
+		By("replacing a genuine copy of its Secret that is mutable")
+		mutable, mutableSecret := startTLS("mutable")
+		expectReplaced(mutable, swapSecret(mutableSecret, func(s *corev1.Secret) { s.Immutable = nil }))
 	})
 
 	It("refuses a client CA that isn't a single CA certificate, even without the webhook", func() {
@@ -555,5 +582,62 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsUnconfiguredNamespace))).To(Succeed())
 			g.Expect(pods.Items).To(BeEmpty())
 		}, "2s").Should(Succeed())
+	})
+
+	It("stops advertising a TLS pod that is terminating", func() {
+		Expect(c.Create(ctx, &corev1.Namespace{Name: tlsDrainNamespace})).To(Succeed())
+		cleanupNamespace(tlsDrainNamespace)
+
+		template := &v1alpha1.BuildkitTemplate{
+			Name:      "drain-template",
+			Namespace: tlsDrainNamespace,
+			Spec:      v1alpha1.BuildkitTemplateSpec{Port: 1234, HealthPort: 1235, RequireClientTLS: true},
+		}
+		Expect(c.Create(ctx, template)).To(Succeed())
+		bk := &v1alpha1.Buildkit{
+			Name:      "draining",
+			Namespace: tlsDrainNamespace,
+			Spec:      v1alpha1.BuildkitSpec{Template: template.Name, ClientCA: testClientCA()},
+		}
+		Expect(c.Create(ctx, bk)).To(Succeed())
+
+		var pods corev1.PodList
+		Eventually(func(g Gomega) {
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsDrainNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+		}).Should(Succeed())
+		podKey := client.ObjectKeyFromObject(&pods.Items[0])
+
+		// Envtest has no kubelet, so pods vanish on delete; a finalizer keeps this one terminating.
+		const finalizer = "test.buildkit.seatgeek.io/hold"
+		Eventually(func(g Gomega) {
+			var pod corev1.Pod
+			g.Expect(c.Get(ctx, podKey, &pod)).To(Succeed())
+			pod.Finalizers = append(pod.Finalizers, finalizer)
+			g.Expect(c.Update(ctx, &pod)).To(Succeed())
+		}).Should(Succeed())
+		DeferCleanup(func() {
+			var pod corev1.Pod
+			if err := c.Get(ctx, podKey, &pod); err == nil {
+				pod.Finalizers = nil
+				Expect(c.Update(ctx, &pod)).To(Succeed())
+			}
+		})
+		markPodReady(podKey)
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).NotTo(BeEmpty())
+		}).Should(Succeed())
+
+		By("deleting the pod without touching its Secret")
+		Expect(c.Delete(ctx, &pods.Items[0])).To(Succeed())
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.GetCondition(v1alpha1.TypeDeployed).Reason).To(Equal(api.ConditionReason("PodTerminating")))
+			g.Expect(updated.Status.Endpoint).To(BeEmpty())
+			g.Expect(updated.Status.ServerCA).To(BeEmpty())
+		}).Should(Succeed())
 	})
 })

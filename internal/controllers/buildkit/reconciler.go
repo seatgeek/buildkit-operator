@@ -123,9 +123,12 @@ func (r *reconciler) runBuildkit() *state {
 				}
 			}
 
-			// A TLS pod being replaced (for a new certificate) may still look ready while it terminates;
-			// don't publish an endpoint whose certificate no longer matches status.
+			// A terminating TLS pod may still look ready, or be held by a finalizer; stop advertising it
+			// rather than let clients connect to an instance on its way out.
 			if tlsOpts != nil && pod.DeletionTimestamp != nil {
+				if err := r.clearConnectionStatus(ctx, obj); err != nil {
+					return nil, types.ErrorResult(err)
+				}
 				return nil, types.RequeueResultWithReasonAndBackoff("Buildkit pod terminating", "PodTerminating")
 			}
 
@@ -329,10 +332,13 @@ func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, man
 	return tlsOpts, nil, nil
 }
 
+// notYetDeleting returns the pods forceDeletePods still has work to do on: those not being deleted,
+// and those being deleted with a longer grace period (e.g. a normal delete before the template
+// required TLS), which may keep serving for the rest of it.
 func notYetDeleting(pods []corev1.Pod) []corev1.Pod {
 	var out []corev1.Pod
 	for _, pod := range pods {
-		if pod.DeletionTimestamp == nil {
+		if pod.DeletionTimestamp == nil || pod.DeletionGracePeriodSeconds == nil || *pod.DeletionGracePeriodSeconds > forceDeleteGracePeriodSeconds {
 			out = append(out, pod)
 		}
 	}
@@ -351,13 +357,15 @@ func podsWithStaleCert(pods []corev1.Pod, sha256 string) []corev1.Pod {
 	return out
 }
 
+const forceDeleteGracePeriodSeconds = 1
+
 // forceDeletePods deletes pods with a one-second grace period. A pod terminating on the template's
 // grace period would keep serving (plaintext, or with a certificate no longer in status) while its
 // pre-stop script waits, and the controller would keep treating it as the live instance. A zero grace
 // period would instead remove the pod object before kubelet has stopped the container.
 func (r *reconciler) forceDeletePods(ctx context.Context, pods []corev1.Pod, out *types.OutputSet) error {
 	for i := range pods {
-		if err := r.c.Delete(ctx, &pods[i], client.GracePeriodSeconds(1)); err != nil && !apierrors.IsNotFound(err) {
+		if err := r.c.Delete(ctx, &pods[i], client.GracePeriodSeconds(forceDeleteGracePeriodSeconds)); err != nil && !apierrors.IsNotFound(err) {
 			return fmt.Errorf("deleting pod %s: %w", pods[i].Name, err)
 		}
 		out.Delete(&pods[i])
@@ -468,6 +476,8 @@ func trustProblem(obj *v1alpha1.Buildkit, secret *corev1.Secret) string {
 		return "server certificate is not the one the operator recorded"
 	case string(secret.Data[SecretClientCAKey]) != obj.Spec.ClientCA:
 		return "client CA does not match spec.clientCA"
+	case secret.Immutable == nil || !*secret.Immutable:
+		return "secret is mutable"
 	}
 	if err := tlsutil.ValidateServerKeyPair(certPEM, keyPEM, obj.Name); err != nil {
 		return "server certificate and key are unusable"
@@ -492,6 +502,9 @@ func (r *reconciler) createTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit
 		Namespace: key.Namespace,
 		Labels:    map[string]string{TLSSecretLabel: "true"},
 		Type:      corev1.SecretTypeTLS,
+		// Immutable so the material can't be patched between validation and a pod mounting it. Changing
+		// it means deleting and recreating the Secret, which the fingerprint check catches.
+		Immutable: new(true),
 		Data: map[string][]byte{
 			corev1.TLSCertKey:       certPEM,
 			corev1.TLSPrivateKeyKey: keyPEM,
