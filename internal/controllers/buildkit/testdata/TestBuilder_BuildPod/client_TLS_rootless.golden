@@ -1,5 +1,6 @@
 metadata:
   annotations:
+    buildkit.seatgeek.io/server-cert-sha256: abc123
     container.apparmor.security.beta.kubernetes.io/buildkit: unconfined
   generateName: test-buildkit-
   labels:

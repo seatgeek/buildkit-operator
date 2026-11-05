@@ -39,6 +39,7 @@ const (
 	tlsSecretNamespace      = "tls-secret-test"
 	tlsOffNamespace         = "tls-off-test"
 	tlsTerminatingNamespace = "tls-terminating-test"
+	tlsBadCANamespace       = "tls-bad-ca-test"
 	// Deliberately left out of the controller's TLS namespaces.
 	tlsUnconfiguredNamespace = "tls-unconfigured-test"
 )
@@ -91,7 +92,7 @@ var _ = BeforeSuite(func() {
 				}
 				tlsConfig := buildkit.TLSConfig{
 					SecretClient:     secretClient,
-					Namespaces:       []string{tlsNamespace, tlsFlipNamespace, tlsSecretNamespace, tlsOffNamespace, tlsTerminatingNamespace},
+					Namespaces:       []string{tlsNamespace, tlsFlipNamespace, tlsSecretNamespace, tlsOffNamespace, tlsTerminatingNamespace, tlsBadCANamespace},
 					HealthProxyImage: "buildkit-operator:test",
 				}
 

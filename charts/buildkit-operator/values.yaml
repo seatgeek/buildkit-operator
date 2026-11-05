@@ -129,7 +129,7 @@ operator:
 
 # Mutual TLS for BuildkitTemplates that set requireClientTLS
 clientTLS:
-  # Namespaces where such templates are used. The operator gets get/create on Secrets in each, via a
+  # Namespaces where such templates are used. The operator gets get/create/delete on Secrets in each, via a
   # namespace-scoped Role, to store every Buildkit's server certificate. With none listed, Buildkits
   # using those templates never start.
   namespaces: []

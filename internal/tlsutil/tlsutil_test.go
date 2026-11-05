@@ -8,9 +8,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
 	"math/big"
 	"testing"
@@ -97,4 +99,34 @@ func leafCertPEM(t *testing.T) string {
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
 	require.NoError(t, err)
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+}
+
+func TestFingerprint(t *testing.T) {
+	t.Parallel()
+
+	certPEM, _, err := GenerateServerCert("a", time.Hour, time.Now())
+	require.NoError(t, err)
+	block, _ := pem.Decode(certPEM)
+
+	got, err := Fingerprint(certPEM)
+	require.NoError(t, err)
+	sum := sha256.Sum256(block.Bytes)
+	assert.Equal(t, hex.EncodeToString(sum[:]), got)
+
+	_, err = Fingerprint([]byte("not pem"))
+	require.Error(t, err)
+}
+
+func TestValidateServerKeyPair(t *testing.T) {
+	t.Parallel()
+
+	certPEM, keyPEM, err := GenerateServerCert("buildkit-a", time.Hour, time.Now())
+	require.NoError(t, err)
+	_, otherKey, err := GenerateServerCert("buildkit-a", time.Hour, time.Now())
+	require.NoError(t, err)
+
+	require.NoError(t, ValidateServerKeyPair(certPEM, keyPEM, "buildkit-a"))
+	require.ErrorContains(t, ValidateServerKeyPair(certPEM, otherKey, "buildkit-a"), "do not form a pair")
+	require.ErrorContains(t, ValidateServerKeyPair(certPEM, nil, "buildkit-a"), "do not form a pair")
+	require.Error(t, ValidateServerKeyPair(certPEM, keyPEM, "buildkit-b"), "certificate must cover the instance name")
 }

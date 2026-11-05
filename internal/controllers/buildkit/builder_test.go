@@ -335,8 +335,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 					RequireClientTLS: true,
 				},
 			},
-			tls:     &TLSOptions{SecretName: "test-buildkit-tls"},
-			wantErr: "requires both a secret name and a health proxy image",
+			tls:     &TLSOptions{SecretName: "test-buildkit-tls", ServerCertSHA256: "abc123"},
+			wantErr: "TLS requires a secret name, a health proxy image and a server certificate fingerprint",
 		},
 		{
 			name: "client TLS",
@@ -345,6 +345,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
+					// The operator's fingerprint must win over metadata from the Buildkit's creator.
+					Annotations: map[string]string{"buildkit.seatgeek.io/server-cert-sha256": "forged"},
 				},
 			},
 			template: &v1alpha1.BuildkitTemplate{
@@ -357,7 +359,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 					RequireClientTLS: true,
 				},
 			},
-			tls: &TLSOptions{SecretName: "test-buildkit-tls", HealthProxyImage: "ghcr.io/seatgeek/buildkit-operator:test"},
+			tls: &TLSOptions{SecretName: "test-buildkit-tls", HealthProxyImage: "ghcr.io/seatgeek/buildkit-operator:test", ServerCertSHA256: "abc123"},
 		},
 		{
 			name: "client TLS rootless",
@@ -379,7 +381,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 					RequireClientTLS: true,
 				},
 			},
-			tls: &TLSOptions{SecretName: "test-buildkit-tls", HealthProxyImage: "ghcr.io/seatgeek/buildkit-operator:test"},
+			tls: &TLSOptions{SecretName: "test-buildkit-tls", HealthProxyImage: "ghcr.io/seatgeek/buildkit-operator:test", ServerCertSHA256: "abc123"},
 		},
 		{
 			name: "requested resources exceed template defaults",
@@ -462,7 +464,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 func TestBuilder_configureTLS_requiresUnixSocket(t *testing.T) {
 	t.Parallel()
 
-	b := NewBuilder(&v1alpha1.Buildkit{}, nil).WithTLS(&TLSOptions{SecretName: "s", HealthProxyImage: "img"})
+	b := NewBuilder(&v1alpha1.Buildkit{}, nil).WithTLS(&TLSOptions{SecretName: "s", HealthProxyImage: "img", ServerCertSHA256: "abc123"})
 	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{
 		Args: []string{"--addr", "tcp://0.0.0.0:9999"},
 	}}}}

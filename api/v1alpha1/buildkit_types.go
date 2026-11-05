@@ -68,6 +68,11 @@ type BuildkitStatus struct {
 	// ServerName is the name clients must verify the server certificate against (the endpoint is a pod
 	// IP, which the certificate does not cover). Empty when TLS is not in use.
 	ServerName string `json:"serverName,omitempty"`
+
+	// ServerCertSHA256 is the hex SHA-256 fingerprint of the server certificate the operator generated
+	// for this instance. Only the operator can write status, so it is the record the operator checks
+	// its TLS Secret against.
+	ServerCertSHA256 string `json:"serverCertSHA256,omitempty"`
 }
 
 func (b *Buildkit) GetConditions() []api.Condition {

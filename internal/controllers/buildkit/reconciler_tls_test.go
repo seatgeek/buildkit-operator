@@ -18,6 +18,7 @@ import (
 	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit"
 	"github.com/seatgeek/buildkit-operator/internal/test"
 	. "github.com/seatgeek/buildkit-operator/internal/test/matchers"
+	"github.com/seatgeek/buildkit-operator/internal/tlsutil"
 )
 
 func testClientCA() string {
@@ -123,6 +124,9 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 		}).Should(Succeed())
 		pod := pods.Items[0]
 		Expect(pod.Spec.Containers[0].Args).To(ContainElement("--tlscacert"))
+		fingerprint, err := tlsutil.Fingerprint(secret.Data[corev1.TLSCertKey])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pod.Annotations).To(HaveKeyWithValue(buildkit.ServerCertAnnotation, fingerprint))
 		Expect(pod.Spec.InitContainers).To(HaveLen(1))
 
 		By("publishing the server certificate and name with the endpoint")
@@ -215,7 +219,7 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 		}).Should(Succeed())
 	})
 
-	It("refuses TLS secrets it doesn't own or whose client CA doesn't match", func() {
+	It("refuses Secrets it doesn't own and replaces ones it can't vouch for", func() {
 		Expect(c.Create(ctx, &corev1.Namespace{Name: tlsSecretNamespace})).To(Succeed())
 		cleanupNamespace(tlsSecretNamespace)
 		DeferCleanup(func() {
@@ -229,70 +233,141 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 		}
 		Expect(c.Create(ctx, template)).To(Succeed())
 
-		expectRefused := func(bk *v1alpha1.Buildkit) {
-			GinkgoHelper()
-			Eventually(func(g Gomega) {
-				var updated v1alpha1.Buildkit
-				g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
-				cond := updated.GetCondition(v1alpha1.TypeDeployed)
-				g.Expect(cond.Status).NotTo(Equal(corev1.ConditionTrue))
-				g.Expect(cond.Message).To(ContainSubstring("TLS secret for this Buildkit is unusable"))
-				g.Expect(cond.Message).NotTo(ContainSubstring("not controlled"))
-				g.Expect(updated.Status.ServerCA).To(BeEmpty())
-			}).Should(Succeed())
-		}
-
-		By("refusing a pre-existing Secret with the instance's name that it doesn't own")
-		Expect(c.Create(ctx, &corev1.Secret{
+		By("refusing, without deleting, a pre-existing Secret with the instance's name that it doesn't own")
+		squattedSecret := &corev1.Secret{
 			Name:      "squatted-tls",
 			Namespace: tlsSecretNamespace,
 			Data:      map[string][]byte{corev1.TLSCertKey: []byte("x"), corev1.TLSPrivateKeyKey: []byte("x"), buildkit.SecretClientCAKey: []byte("x")},
-		})).To(Succeed())
+		}
+		Expect(c.Create(ctx, squattedSecret)).To(Succeed())
 		squatted := &v1alpha1.Buildkit{
 			Name:      "squatted",
 			Namespace: tlsSecretNamespace,
 			Spec:      v1alpha1.BuildkitSpec{Template: template.Name, ClientCA: testClientCA()},
 		}
 		Expect(c.Create(ctx, squatted)).To(Succeed())
-		expectRefused(squatted)
-
-		By("refusing its own Secret once the client CA no longer matches the spec")
-		tampered := &v1alpha1.Buildkit{
-			Name:      "tampered",
-			Namespace: tlsSecretNamespace,
-			Spec:      v1alpha1.BuildkitSpec{Template: template.Name, ClientCA: testClientCA()},
-		}
-		Expect(c.Create(ctx, tampered)).To(Succeed())
-		var secret corev1.Secret
 		Eventually(func(g Gomega) {
-			g.Expect(c.Get(ctx, client.ObjectKey{Namespace: tlsSecretNamespace, Name: "tampered-tls"}, &secret)).To(Succeed())
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(squatted), &updated)).To(Succeed())
+			cond := updated.GetCondition(v1alpha1.TypeDeployed)
+			g.Expect(cond.Status).NotTo(Equal(corev1.ConditionTrue))
+			g.Expect(cond.Message).To(ContainSubstring("TLS secret for this Buildkit is unusable"))
+			g.Expect(cond.Message).NotTo(ContainSubstring("not controlled"))
+			g.Expect(updated.Status.ServerCA).To(BeEmpty())
 		}).Should(Succeed())
-		secret.Data[buildkit.SecretClientCAKey] = []byte(testClientCA())
-		Expect(c.Update(ctx, &secret)).To(Succeed())
-		Expect(c.DeleteAllOf(ctx, &corev1.Pod{}, client.InNamespace(tlsSecretNamespace))).To(Succeed())
-		expectRefused(tampered)
+		var stillThere corev1.Secret
+		Expect(c.Get(ctx, client.ObjectKeyFromObject(squattedSecret), &stillThere)).To(Succeed())
+		Expect(stillThere.UID).To(Equal(squattedSecret.UID))
 
-		By("refusing its own Secret once the server key is missing")
-		keyless := &v1alpha1.Buildkit{
-			Name:      "keyless",
-			Namespace: tlsSecretNamespace,
-			Spec:      v1alpha1.BuildkitSpec{Template: template.Name, ClientCA: testClientCA()},
+		// startTLS creates a Buildkit and waits for its operator-made Secret.
+		startTLS := func(name string) (*v1alpha1.Buildkit, corev1.Secret) {
+			GinkgoHelper()
+			bk := &v1alpha1.Buildkit{
+				Name:      name,
+				Namespace: tlsSecretNamespace,
+				Spec:      v1alpha1.BuildkitSpec{Template: template.Name, ClientCA: testClientCA()},
+			}
+			Expect(c.Create(ctx, bk)).To(Succeed())
+			var secret corev1.Secret
+			Eventually(func(g Gomega) {
+				g.Expect(c.Get(ctx, client.ObjectKey{Namespace: tlsSecretNamespace, Name: name + "-tls"}, &secret)).To(Succeed())
+				var updated v1alpha1.Buildkit
+				g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+				g.Expect(updated.Status.ServerCertSHA256).NotTo(BeEmpty())
+			}).Should(Succeed())
+			return bk, secret
 		}
-		Expect(c.Create(ctx, keyless)).To(Succeed())
-		var keylessSecret corev1.Secret
-		Eventually(func(g Gomega) {
-			g.Expect(c.Get(ctx, client.ObjectKey{Namespace: tlsSecretNamespace, Name: "keyless-tls"}, &keylessSecret)).To(Succeed())
-		}).Should(Succeed())
+
+		// expectReplaced waits for the operator to swap the Secret for a fresh one it can vouch for.
+		expectReplaced := func(bk *v1alpha1.Buildkit, previous corev1.Secret) {
+			GinkgoHelper()
+			Expect(c.DeleteAllOf(ctx, &corev1.Pod{}, client.InNamespace(tlsSecretNamespace))).To(Succeed()) // trigger a reconcile
+			Eventually(func(g Gomega) {
+				var secret corev1.Secret
+				g.Expect(c.Get(ctx, client.ObjectKeyFromObject(&previous), &secret)).To(Succeed())
+				g.Expect(secret.UID).NotTo(Equal(previous.UID))
+				g.Expect(string(secret.Data[buildkit.SecretClientCAKey])).To(Equal(bk.Spec.ClientCA))
+				g.Expect(tlsutil.ValidateServerKeyPair(secret.Data[corev1.TLSCertKey], secret.Data[corev1.TLSPrivateKeyKey], bk.Name)).To(Succeed())
+
+				var updated v1alpha1.Buildkit
+				g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+				fingerprint, err := tlsutil.Fingerprint(secret.Data[corev1.TLSCertKey])
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(updated.Status.ServerCertSHA256).To(Equal(fingerprint))
+
+				var pods corev1.PodList
+				g.Expect(c.List(ctx, &pods, client.InNamespace(tlsSecretNamespace))).To(Succeed())
+				for _, pod := range pods.Items {
+					if pod.GenerateName == bk.Name+"-" {
+						g.Expect(pod.Annotations).To(HaveKeyWithValue(buildkit.ServerCertAnnotation, fingerprint))
+					}
+				}
+			}).Should(Succeed())
+		}
+
+		By("replacing a Secret with a forged owner reference and someone else's server key")
+		forged, original := startTLS("forged")
+		Expect(c.Delete(ctx, &original)).To(Succeed())
+		attackerCert, attackerKey, err := tlsutil.GenerateServerCert("forged", time.Hour, time.Now())
+		Expect(err).NotTo(HaveOccurred())
+		impostor := &corev1.Secret{
+			Name:            original.Name,
+			Namespace:       original.Namespace,
+			OwnerReferences: original.OwnerReferences,
+			Type:            corev1.SecretTypeTLS,
+			Data: map[string][]byte{
+				corev1.TLSCertKey:          attackerCert,
+				corev1.TLSPrivateKeyKey:    attackerKey,
+				buildkit.SecretClientCAKey: []byte(forged.Spec.ClientCA),
+			},
+		}
+		Expect(c.Create(ctx, impostor)).To(Succeed())
+		expectReplaced(forged, *impostor)
+
+		By("replacing its own Secret once the client CA no longer matches the spec")
+		tampered, tamperedSecret := startTLS("tampered")
+		tamperedSecret.Data[buildkit.SecretClientCAKey] = []byte(testClientCA())
+		Expect(c.Update(ctx, &tamperedSecret)).To(Succeed())
+		expectReplaced(tampered, tamperedSecret)
+
+		By("replacing its own Secret once the server key is unusable")
+		keyless, keylessSecret := startTLS("keyless")
 		// Type kubernetes.io/tls requires the key to be present, but not non-empty.
 		keylessSecret.Data[corev1.TLSPrivateKeyKey] = []byte{}
 		Expect(c.Update(ctx, &keylessSecret)).To(Succeed())
-		Expect(c.DeleteAllOf(ctx, &corev1.Pod{}, client.InNamespace(tlsSecretNamespace))).To(Succeed())
-		expectRefused(keyless)
+		expectReplaced(keyless, keylessSecret)
+	})
 
+	It("refuses a client CA that isn't a single CA certificate, even without the webhook", func() {
+		Expect(c.Create(ctx, &corev1.Namespace{Name: tlsBadCANamespace})).To(Succeed())
+		cleanupNamespace(tlsBadCANamespace)
+
+		template := &v1alpha1.BuildkitTemplate{
+			Name:      "bad-ca-template",
+			Namespace: tlsBadCANamespace,
+			Spec:      v1alpha1.BuildkitTemplateSpec{Port: 1234, HealthPort: 1235, RequireClientTLS: true},
+		}
+		Expect(c.Create(ctx, template)).To(Succeed())
+		bk := &v1alpha1.Buildkit{
+			Name:      "bad-ca",
+			Namespace: tlsBadCANamespace,
+			Spec:      v1alpha1.BuildkitSpec{Template: template.Name, ClientCA: testClientCA() + testClientCA()},
+		}
+		Expect(c.Create(ctx, bk)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.GetCondition(v1alpha1.TypeDeployed)).To(MatchCondition(api.Condition{
+				Status: corev1.ConditionFalse,
+				Reason: buildkit.ReasonClientCAInvalid,
+			}))
+		}).Should(Succeed())
 		var pods corev1.PodList
 		Consistently(func(g Gomega) {
-			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsSecretNamespace))).To(Succeed())
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsBadCANamespace))).To(Succeed())
 			g.Expect(pods.Items).To(BeEmpty())
+			g.Expect(c.Get(ctx, client.ObjectKey{Namespace: tlsBadCANamespace, Name: "bad-ca-tls"}, &corev1.Secret{})).NotTo(Succeed())
 		}, "2s").Should(Succeed())
 	})
 
@@ -347,6 +422,12 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 			g.Expect(pods.Items).To(HaveLen(1))
 			g.Expect(pods.Items[0].Name).NotTo(Equal(tlsPod.Name))
 			g.Expect(pods.Items[0].Spec.Containers[0].Args).NotTo(ContainElement("--tlscacert"))
+		}).Should(Succeed())
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).To(BeEmpty(), "no TLS endpoint without its certificate")
+			g.Expect(updated.Status.ServerCA).To(BeEmpty())
 		}).Should(Succeed())
 		markPodReady(client.ObjectKeyFromObject(&pods.Items[0]))
 		Eventually(func(g Gomega) {

@@ -1,4 +1,6 @@
 metadata:
+  annotations:
+    buildkit.seatgeek.io/server-cert-sha256: abc123
   generateName: test-buildkit-
   labels:
     app.kubernetes.io/name: buildkit

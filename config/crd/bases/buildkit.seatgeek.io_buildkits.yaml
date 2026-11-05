@@ -214,6 +214,12 @@ spec:
                   ServerCA is the PEM-encoded certificate clients should trust for the endpoint when the template
                   sets requireClientTLS. Empty when TLS is not in use.
                 type: string
+              serverCertSHA256:
+                description: |-
+                  ServerCertSHA256 is the hex SHA-256 fingerprint of the server certificate the operator generated
+                  for this instance. Only the operator can write status, so it is the record the operator checks
+                  its TLS Secret against.
+                type: string
               serverName:
                 description: |-
                   ServerName is the name clients must verify the server certificate against (the endpoint is a pod
