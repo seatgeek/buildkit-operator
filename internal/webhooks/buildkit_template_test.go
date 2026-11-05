@@ -75,6 +75,20 @@ missing closing bracket`,
 			Expect(c.Create(ctx, buildkitTemplate)).To(MatchError(ContainSubstring("spec.healthPort must differ from spec.port")))
 		})
 
+		It("should reject an out-of-range health port when client TLS is required", func() {
+			buildkitTemplate := &v1alpha1.BuildkitTemplate{
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:             1234,
+					HealthPort:       70000,
+					RequireClientTLS: true,
+				},
+			}
+
+			Expect(c.Create(ctx, buildkitTemplate)).To(MatchError(ContainSubstring("spec.healthPort must be between 1 and 65535")))
+		})
+
 		It("should accept empty TOML", func() {
 			buildkitTemplate := &v1alpha1.BuildkitTemplate{
 				Name:      "test-buildkit-template",

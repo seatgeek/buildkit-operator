@@ -5,6 +5,8 @@
 package buildkit_test
 
 import (
+	"time"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/reddit/achilles-sdk-api/api"
@@ -43,6 +45,21 @@ func cleanupNamespace(namespace string) {
 		Expect(c.DeleteAllOf(ctx, &v1alpha1.BuildkitTemplate{}, client.InNamespace(namespace))).To(Succeed())
 		Expect(c.DeleteAllOf(ctx, &corev1.Pod{}, client.InNamespace(namespace))).To(Succeed())
 	})
+}
+
+// nudgePod changes a pod annotation so the controller reconciles its Buildkit; re-applying an
+// unchanged status would not produce an event.
+func nudgePod(key client.ObjectKey) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		var pod corev1.Pod
+		g.Expect(c.Get(ctx, key, &pod)).To(Succeed())
+		if pod.Annotations == nil {
+			pod.Annotations = map[string]string{}
+		}
+		pod.Annotations["test.buildkit.seatgeek.io/nudge"] = time.Now().Format(time.RFC3339Nano)
+		g.Expect(c.Update(ctx, &pod)).To(Succeed())
+	}).Should(Succeed())
 }
 
 var _ = Describe("Buildkit Reconciler with client TLS", func() {
@@ -255,9 +272,206 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 		Expect(c.DeleteAllOf(ctx, &corev1.Pod{}, client.InNamespace(tlsSecretNamespace))).To(Succeed())
 		expectRefused(tampered)
 
+		By("refusing its own Secret once the server key is missing")
+		keyless := &v1alpha1.Buildkit{
+			Name:      "keyless",
+			Namespace: tlsSecretNamespace,
+			Spec:      v1alpha1.BuildkitSpec{Template: template.Name, ClientCA: testClientCA()},
+		}
+		Expect(c.Create(ctx, keyless)).To(Succeed())
+		var keylessSecret corev1.Secret
+		Eventually(func(g Gomega) {
+			g.Expect(c.Get(ctx, client.ObjectKey{Namespace: tlsSecretNamespace, Name: "keyless-tls"}, &keylessSecret)).To(Succeed())
+		}).Should(Succeed())
+		// Type kubernetes.io/tls requires the key to be present, but not non-empty.
+		keylessSecret.Data[corev1.TLSPrivateKeyKey] = []byte{}
+		Expect(c.Update(ctx, &keylessSecret)).To(Succeed())
+		Expect(c.DeleteAllOf(ctx, &corev1.Pod{}, client.InNamespace(tlsSecretNamespace))).To(Succeed())
+		expectRefused(keyless)
+
 		var pods corev1.PodList
 		Consistently(func(g Gomega) {
 			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsSecretNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(BeEmpty())
+		}, "2s").Should(Succeed())
+	})
+
+	It("clears the TLS status once TLS is off and no TLS pod remains", func() {
+		Expect(c.Create(ctx, &corev1.Namespace{Name: tlsOffNamespace})).To(Succeed())
+		cleanupNamespace(tlsOffNamespace)
+
+		template := &v1alpha1.BuildkitTemplate{
+			Name:      "off-template",
+			Namespace: tlsOffNamespace,
+			Spec:      v1alpha1.BuildkitTemplateSpec{Port: 1234, HealthPort: 1235, RequireClientTLS: true},
+		}
+		Expect(c.Create(ctx, template)).To(Succeed())
+		bk := &v1alpha1.Buildkit{
+			Name:      "was-tls",
+			Namespace: tlsOffNamespace,
+			Spec:      v1alpha1.BuildkitSpec{Template: template.Name, ClientCA: testClientCA()},
+		}
+		Expect(c.Create(ctx, bk)).To(Succeed())
+
+		var pods corev1.PodList
+		Eventually(func(g Gomega) {
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsOffNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+		}).Should(Succeed())
+		tlsPod := pods.Items[0]
+		markPodReady(client.ObjectKeyFromObject(&tlsPod))
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.ServerCA).NotTo(BeEmpty())
+		}).Should(Succeed())
+
+		By("keeping the TLS status while the running pod still serves TLS")
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.BuildkitTemplate
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(template), &updated)).To(Succeed())
+			updated.Spec.RequireClientTLS = false
+			g.Expect(c.Update(ctx, &updated)).To(Succeed())
+		}).Should(Succeed())
+		nudgePod(client.ObjectKeyFromObject(&tlsPod))
+		Consistently(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.ServerCA).NotTo(BeEmpty())
+		}, "2s").Should(Succeed())
+
+		By("clearing it once the replacement pod is plaintext")
+		Expect(c.Delete(ctx, &tlsPod)).To(Succeed())
+		Eventually(func(g Gomega) {
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsOffNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+			g.Expect(pods.Items[0].Name).NotTo(Equal(tlsPod.Name))
+			g.Expect(pods.Items[0].Spec.Containers[0].Args).NotTo(ContainElement("--tlscacert"))
+		}).Should(Succeed())
+		markPodReady(client.ObjectKeyFromObject(&pods.Items[0]))
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).NotTo(BeEmpty())
+			g.Expect(updated.Status.ServerCA).To(BeEmpty())
+			g.Expect(updated.Status.ServerName).To(BeEmpty())
+		}).Should(Succeed())
+	})
+
+	It("doesn't publish the endpoint of a TLS pod that is terminating", func() {
+		Expect(c.Create(ctx, &corev1.Namespace{Name: tlsTerminatingNamespace})).To(Succeed())
+		cleanupNamespace(tlsTerminatingNamespace)
+
+		template := &v1alpha1.BuildkitTemplate{
+			Name:      "terminating-template",
+			Namespace: tlsTerminatingNamespace,
+			Spec:      v1alpha1.BuildkitTemplateSpec{Port: 1234, HealthPort: 1235, RequireClientTLS: true},
+		}
+		Expect(c.Create(ctx, template)).To(Succeed())
+		bk := &v1alpha1.Buildkit{
+			Name:      "restarting",
+			Namespace: tlsTerminatingNamespace,
+			Spec:      v1alpha1.BuildkitSpec{Template: template.Name, ClientCA: testClientCA()},
+		}
+		Expect(c.Create(ctx, bk)).To(Succeed())
+
+		var pods corev1.PodList
+		Eventually(func(g Gomega) {
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsTerminatingNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+		}).Should(Succeed())
+		oldPod := pods.Items[0]
+		oldKey := client.ObjectKeyFromObject(&oldPod)
+
+		// Envtest has no kubelet, so pods vanish on delete; a finalizer keeps this one terminating.
+		const finalizer = "test.buildkit.seatgeek.io/hold"
+		Eventually(func(g Gomega) {
+			var pod corev1.Pod
+			g.Expect(c.Get(ctx, oldKey, &pod)).To(Succeed())
+			pod.Finalizers = append(pod.Finalizers, finalizer)
+			g.Expect(c.Update(ctx, &pod)).To(Succeed())
+		}).Should(Succeed())
+		markPodReady(oldKey)
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).NotTo(BeEmpty())
+		}).Should(Succeed())
+
+		By("replacing the Secret, which makes the controller restart the pod")
+		Expect(c.Delete(ctx, &corev1.Secret{Name: "restarting-tls", Namespace: tlsTerminatingNamespace})).To(Succeed())
+		nudgePod(oldKey)
+
+		By("withholding the endpoint while the old pod, still ready, is terminating")
+		Eventually(func(g Gomega) {
+			var pod corev1.Pod
+			g.Expect(c.Get(ctx, oldKey, &pod)).To(Succeed())
+			g.Expect(pod.DeletionTimestamp).NotTo(BeNil())
+		}).Should(Succeed())
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.GetCondition(v1alpha1.TypeDeployed).Reason).To(Equal(api.ConditionReason("PodTerminating")))
+		}).Should(Succeed())
+		Consistently(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).To(BeEmpty())
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsTerminatingNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1), "no replacement until the old pod is gone")
+		}, "2s").Should(Succeed())
+
+		By("starting a replacement once the old pod is gone")
+		Eventually(func(g Gomega) {
+			var pod corev1.Pod
+			g.Expect(c.Get(ctx, oldKey, &pod)).To(Succeed())
+			pod.Finalizers = nil
+			g.Expect(c.Update(ctx, &pod)).To(Succeed())
+		}).Should(Succeed())
+		Eventually(func(g Gomega) {
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsTerminatingNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+			g.Expect(pods.Items[0].Name).NotTo(Equal(oldPod.Name))
+		}).Should(Succeed())
+		var secret corev1.Secret
+		Expect(c.Get(ctx, client.ObjectKey{Namespace: tlsTerminatingNamespace, Name: "restarting-tls"}, &secret)).To(Succeed())
+		markPodReady(client.ObjectKeyFromObject(&pods.Items[0]))
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).NotTo(BeEmpty())
+			g.Expect(updated.Status.ServerCA).To(Equal(string(secret.Data[corev1.TLSCertKey])))
+		}).Should(Succeed())
+	})
+
+	It("reports a clear error and starts no pod in a namespace not configured for TLS", func() {
+		Expect(c.Create(ctx, &corev1.Namespace{Name: tlsUnconfiguredNamespace})).To(Succeed())
+		cleanupNamespace(tlsUnconfiguredNamespace)
+
+		template := &v1alpha1.BuildkitTemplate{
+			Name:      "unconfigured-template",
+			Namespace: tlsUnconfiguredNamespace,
+			Spec:      v1alpha1.BuildkitTemplateSpec{Port: 1234, HealthPort: 1235, RequireClientTLS: true},
+		}
+		Expect(c.Create(ctx, template)).To(Succeed())
+		bk := &v1alpha1.Buildkit{
+			Name:      "unconfigured",
+			Namespace: tlsUnconfiguredNamespace,
+			Spec:      v1alpha1.BuildkitSpec{Template: template.Name, ClientCA: testClientCA()},
+		}
+		Expect(c.Create(ctx, bk)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			cond := updated.GetCondition(v1alpha1.TypeDeployed)
+			g.Expect(cond.Status).NotTo(Equal(corev1.ConditionTrue))
+			g.Expect(cond.Message).To(ContainSubstring("not configured to manage TLS secrets in namespace " + tlsUnconfiguredNamespace))
+		}).Should(Succeed())
+
+		var pods corev1.PodList
+		Consistently(func(g Gomega) {
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsUnconfiguredNamespace))).To(Succeed())
 			g.Expect(pods.Items).To(BeEmpty())
 		}, "2s").Should(Succeed())
 	})

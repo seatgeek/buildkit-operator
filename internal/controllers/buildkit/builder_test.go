@@ -318,6 +318,27 @@ func TestBuilder_BuildPod(t *testing.T) {
 			wantErr: "requires client TLS",
 		},
 		{
+			name: "client TLS without a health proxy image",
+			buildkit: &v1alpha1.Buildkit{
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitSpec{
+					Template: "test-template",
+				},
+			},
+			template: &v1alpha1.BuildkitTemplate{
+				Name:      "test-template",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:             1234,
+					HealthPort:       1235,
+					RequireClientTLS: true,
+				},
+			},
+			tls:     &TLSOptions{SecretName: "test-buildkit-tls"},
+			wantErr: "requires both a secret name and a health proxy image",
+		},
+		{
 			name: "client TLS",
 			buildkit: &v1alpha1.Buildkit{
 				Name:      "test-buildkit",
@@ -436,4 +457,17 @@ func TestBuilder_BuildPod(t *testing.T) {
 			autogold.ExpectFile(t, autogold.Raw(yamlBytes))
 		})
 	}
+}
+
+func TestBuilder_configureTLS_requiresUnixSocket(t *testing.T) {
+	t.Parallel()
+
+	b := NewBuilder(&v1alpha1.Buildkit{}, nil).WithTLS(&TLSOptions{SecretName: "s", HealthProxyImage: "img"})
+	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+		Args: []string{"--addr", "tcp://0.0.0.0:9999"},
+	}}}}
+
+	err := b.configureTLS(pod, &v1alpha1.BuildkitTemplate{})
+	require.ErrorContains(t, err, "unexpected buildkitd socket address")
+	assert.Empty(t, pod.Spec.InitContainers, "no sidecar on a pod the builder refused")
 }

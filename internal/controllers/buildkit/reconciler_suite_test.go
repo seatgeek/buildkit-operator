@@ -34,9 +34,13 @@ import (
 // Namespaces the TLS tests run in; the controller only manages TLS secrets in these. Envtest never
 // finishes deleting namespaces, so each is used by a single test.
 const (
-	tlsNamespace       = "tls-test"
-	tlsFlipNamespace   = "tls-flip-test"
-	tlsSecretNamespace = "tls-secret-test"
+	tlsNamespace            = "tls-test"
+	tlsFlipNamespace        = "tls-flip-test"
+	tlsSecretNamespace      = "tls-secret-test"
+	tlsOffNamespace         = "tls-off-test"
+	tlsTerminatingNamespace = "tls-terminating-test"
+	// Deliberately left out of the controller's TLS namespaces.
+	tlsUnconfiguredNamespace = "tls-unconfigured-test"
 )
 
 var (
@@ -87,7 +91,7 @@ var _ = BeforeSuite(func() {
 				}
 				tlsConfig := buildkit.TLSConfig{
 					SecretClient:     secretClient,
-					Namespaces:       []string{tlsNamespace, tlsFlipNamespace, tlsSecretNamespace},
+					Namespaces:       []string{tlsNamespace, tlsFlipNamespace, tlsSecretNamespace, tlsOffNamespace, tlsTerminatingNamespace},
 					HealthProxyImage: "buildkit-operator:test",
 				}
 
