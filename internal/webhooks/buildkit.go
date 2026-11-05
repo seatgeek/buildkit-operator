@@ -23,6 +23,8 @@ import (
 
 // +kubebuilder:webhook:path=/validate-buildkit-seatgeek-io-v1alpha1-buildkit,mutating=false,failurePolicy=fail,sideEffects=None,groups=buildkit.seatgeek.io,resources=buildkits,verbs=create;update,versions=v1alpha1,name=mbuildkit.kb.io,admissionReviewVersions=v1
 
+const maxTLSBuildkitNameLength = 253 - len("-tls-") - 16
+
 type BuildkitValidator struct {
 	c client.Reader
 }
@@ -111,9 +113,9 @@ func validateAgainstTemplate(bk *v1alpha1.Buildkit, template *v1alpha1.BuildkitT
 	}
 
 	if template.Spec.RequireClientTLS {
-		// The TLS Secret is named "<name>-tls" and must fit the 253-character object name limit.
-		if len(bk.Name) > 249 {
-			errorList = append(errorList, field.TooLong(field.NewPath("metadata", "name"), bk.Name, 249))
+		// TLS Secrets are named "<name>-tls-<16 hex>" and must fit the 253-character object name limit.
+		if len(bk.Name) > maxTLSBuildkitNameLength {
+			errorList = append(errorList, field.TooLong(field.NewPath("metadata", "name"), bk.Name, maxTLSBuildkitNameLength))
 		}
 		if bk.Spec.ClientCA == "" {
 			errorList = append(errorList, field.Required(

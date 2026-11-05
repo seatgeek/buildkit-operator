@@ -177,7 +177,7 @@ var _ = Describe("BuildkitValidator", func() {
 
 		It("should reject names too long for the TLS secret", func() {
 			buildkit := &v1alpha1.Buildkit{
-				Name:      strings.Repeat("a", 250),
+				Name:      strings.Repeat("a", 233),
 				Namespace: namespace,
 				Spec:      v1alpha1.BuildkitSpec{Template: tlsTemplateName, ClientCA: testCA()},
 			}

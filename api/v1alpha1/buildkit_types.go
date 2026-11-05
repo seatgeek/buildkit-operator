@@ -71,7 +71,7 @@ type BuildkitStatus struct {
 
 	// ServerCertSHA256 is the hex SHA-256 fingerprint of the server certificate the operator generated
 	// for this instance. Only the operator can write status, so it is the record the operator checks
-	// its TLS Secret against.
+	// its TLS Secret against; the Secret is named after it.
 	ServerCertSHA256 string `json:"serverCertSHA256,omitempty"`
 }
 

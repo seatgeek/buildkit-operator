@@ -307,11 +307,14 @@ func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, man
 		return nil, nil, err
 	}
 
-	// A pod started with a different server certificate (the Secret was replaced, possibly by an
-	// earlier reconcile that didn't get to restart it) would serve a certificate clients can't verify
-	// against status. Restart it.
-	if stale := podsWithStaleCert(managedPods, tlsOpts.ServerCertSHA256); len(stale) > 0 {
+	// A pod mounting a different Secret was started with a different server certificate (one was
+	// re-minted, possibly by an earlier reconcile that didn't get to restart it), which clients can't
+	// verify against status. Drop its Secret and restart it.
+	if stale := podsWithStaleSecret(managedPods, tlsOpts.SecretName); len(stale) > 0 {
 		if err := r.clearConnectionStatus(ctx, obj); err != nil {
+			return nil, nil, err
+		}
+		if err := r.deleteSupersededSecrets(ctx, obj, stale, tlsOpts.SecretName, log); err != nil {
 			return nil, nil, err
 		}
 		if deleting := notYetDeleting(stale); len(deleting) > 0 {
@@ -345,16 +348,42 @@ func notYetDeleting(pods []corev1.Pod) []corev1.Pod {
 	return out
 }
 
-// podsWithStaleCert returns the TLS pods that weren't started with the server certificate fingerprinted
-// by sha256.
-func podsWithStaleCert(pods []corev1.Pod, sha256 string) []corev1.Pod {
+// podsWithStaleSecret returns the pods that don't mount the current TLS Secret.
+func podsWithStaleSecret(pods []corev1.Pod, current string) []corev1.Pod {
 	var out []corev1.Pod
 	for _, pod := range pods {
-		if pod.Annotations[ServerCertAnnotation] != sha256 {
+		if podTLSSecretName(&pod) != current {
 			out = append(out, pod)
 		}
 	}
 	return out
+}
+
+// deleteSupersededSecrets deletes the TLS Secrets stale pods mount, if this Buildkit controls them. A
+// running pod keeps its mounted copy, so this is safe before the pod goes, and doing it first means a
+// crash in between leaves no Secret that only garbage collection would find.
+func (r *reconciler) deleteSupersededSecrets(ctx context.Context, obj *v1alpha1.Buildkit, stale []corev1.Pod, current string, log *zap.SugaredLogger) error {
+	for i := range stale {
+		name := podTLSSecretName(&stale[i])
+		if name == "" || name == current {
+			continue
+		}
+		var secret corev1.Secret
+		if err := r.tls.SecretClient.Get(ctx, client.ObjectKey{Namespace: obj.Namespace, Name: name}, &secret); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return fmt.Errorf("getting superseded TLS secret %s: %w", name, err)
+		}
+		if !metav1.IsControlledBy(&secret, obj) {
+			continue
+		}
+		log.Infow("Deleting superseded TLS secret", "secret", name)
+		if err := r.tls.SecretClient.Delete(ctx, &secret, client.Preconditions{UID: &secret.UID}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("deleting superseded TLS secret %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 const forceDeleteGracePeriodSeconds = 1
@@ -403,65 +432,79 @@ func podsWithoutTLS(pods []corev1.Pod) []corev1.Pod {
 // read, and the details (does a Secret with this name exist?) are only logged.
 var errTLSSecretUnusable = errors.New("TLS secret for this Buildkit is unusable; see operator logs")
 
+// tlsSecretName names the Secret holding the server certificate with the given fingerprint. Each
+// certificate gets its own Secret, so a name is never reused for different material: kubelet keeps
+// serving an immutable Secret it has cached for as long as any pod on the node mounts that name, even
+// after the Secret is deleted and recreated.
+func tlsSecretName(obj *v1alpha1.Buildkit, fingerprint string) string {
+	return obj.Name + "-tls-" + fingerprint[:tlsSecretSuffixLength]
+}
+
+// tlsSecretSuffixLength is the number of fingerprint hex characters in a TLS Secret's name. It only
+// needs to tell one Buildkit's certificates apart; trust rests on the full fingerprint in status.
+const tlsSecretSuffixLength = 16
+
 // ensureTLSSecret returns the TLS options for the Buildkit's pod and the server certificate clients
-// should trust. It creates the Secret with a fresh server certificate on first use, and replaces a
-// Secret claiming this Buildkit as owner that doesn't hold the certificate the operator recorded in
-// status (an owner reference alone proves nothing: anyone who can create Secrets can forge one).
+// should trust. The current Secret is the one named for status.serverCertSHA256, which only the
+// operator can write. If it is missing, or the operator can't vouch for its contents (an owner
+// reference alone proves nothing: anyone who can create Secrets can forge one), a new certificate is
+// minted into a new Secret.
 func (r *reconciler) ensureTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit, log *zap.SugaredLogger) (*TLSOptions, string, error) {
 	if r.tls.SecretClient == nil || r.tls.HealthProxyImage == "" || !slices.Contains(r.tls.Namespaces, obj.Namespace) {
 		return nil, "", fmt.Errorf("operator is not configured to manage TLS secrets in namespace %s", obj.Namespace)
 	}
 
-	key := client.ObjectKey{Namespace: obj.Namespace, Name: obj.Name + "-tls"}
-
-	var secret corev1.Secret
-	err := r.tls.SecretClient.Get(ctx, key, &secret)
-	if err == nil {
-		// Never touch a Secret that doesn't claim this Buildkit: it may belong to someone else.
-		if !metav1.IsControlledBy(&secret, obj) {
-			log.Errorw("Refusing to use TLS secret", "secret", key.Name, "problem", "exists but is not controlled by this Buildkit")
-			return nil, "", errTLSSecretUnusable
-		}
-		if err := r.refreshCertFingerprint(ctx, obj, &secret); err != nil {
-			return nil, "", err
-		}
-		if problem := trustProblem(obj, &secret); problem != "" {
-			log.Infow("Replacing TLS secret", "secret", key.Name, "problem", problem)
-			if err := r.tls.SecretClient.Delete(ctx, &secret, client.Preconditions{UID: &secret.UID}); err != nil && !apierrors.IsNotFound(err) {
-				return nil, "", fmt.Errorf("deleting TLS secret %s: %w", key.Name, err)
-			}
-			err = apierrors.NewNotFound(corev1.Resource("secrets"), key.Name)
-		}
-	}
-	if apierrors.IsNotFound(err) {
-		if err := r.createTLSSecret(ctx, obj, key, &secret, log); err != nil {
-			return nil, "", err
-		}
-	} else if err != nil {
-		return nil, "", fmt.Errorf("getting TLS secret %s: %w", key.Name, err)
-	}
-
-	return &TLSOptions{
-		SecretName:       key.Name,
-		HealthProxyImage: r.tls.HealthProxyImage,
-		ServerCertSHA256: obj.Status.ServerCertSHA256,
-	}, string(secret.Data[corev1.TLSCertKey]), nil
-}
-
-// refreshCertFingerprint re-reads the recorded fingerprint from the API server when the cached
-// Buildkit's doesn't match the Secret. The fingerprint is patched straight after the Secret is created,
-// so the informer cache can lag it, and acting on the stale copy would replace a good Secret.
-func (r *reconciler) refreshCertFingerprint(ctx context.Context, obj *v1alpha1.Buildkit, secret *corev1.Secret) error {
-	if fingerprint, err := tlsutil.Fingerprint(secret.Data[corev1.TLSCertKey]); err == nil && fingerprint == obj.Status.ServerCertSHA256 {
-		return nil
-	}
-
+	// The fingerprint is patched straight after minting, so the informer cache can lag it. Acting on a
+	// stale one could mint again, or point back at a superseded Secret and write it back to status.
 	var fresh v1alpha1.Buildkit
 	if err := r.tls.SecretClient.Get(ctx, client.ObjectKeyFromObject(obj), &fresh); err != nil {
-		return fmt.Errorf("re-reading Buildkit %s: %w", obj.Name, err)
+		return nil, "", fmt.Errorf("re-reading Buildkit %s: %w", obj.Name, err)
 	}
 	obj.Status.ServerCertSHA256 = fresh.Status.ServerCertSHA256
-	return nil
+
+	secret, found, err := r.currentTLSSecret(ctx, obj, log)
+	if err != nil {
+		return nil, "", err
+	}
+	if !found {
+		if secret, err = r.mintTLSSecret(ctx, obj, log); err != nil {
+			return nil, "", err
+		}
+	}
+
+	return &TLSOptions{SecretName: secret.Name, HealthProxyImage: r.tls.HealthProxyImage}, string(secret.Data[corev1.TLSCertKey]), nil
+}
+
+// currentTLSSecret returns the Secret for the recorded fingerprint if the operator can vouch for it;
+// found is false when a new certificate must be minted. An unvouched Secret claiming this Buildkit is deleted;
+// one that doesn't claim it is left alone.
+func (r *reconciler) currentTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit, log *zap.SugaredLogger) (secret *corev1.Secret, found bool, err error) {
+	if obj.Status.ServerCertSHA256 == "" {
+		return nil, false, nil
+	}
+
+	key := client.ObjectKey{Namespace: obj.Namespace, Name: tlsSecretName(obj, obj.Status.ServerCertSHA256)}
+	secret = &corev1.Secret{}
+	if err := r.tls.SecretClient.Get(ctx, key, secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("getting TLS secret %s: %w", key.Name, err)
+	}
+
+	if !metav1.IsControlledBy(secret, obj) {
+		log.Infow("Not using TLS secret", "secret", key.Name, "problem", "not controlled by this Buildkit")
+		return nil, false, nil
+	}
+	if problem := trustProblem(obj, secret); problem != "" {
+		log.Infow("Replacing TLS secret", "secret", key.Name, "problem", problem)
+		if err := r.tls.SecretClient.Delete(ctx, secret, client.Preconditions{UID: &secret.UID}); err != nil && !apierrors.IsNotFound(err) {
+			return nil, false, fmt.Errorf("deleting TLS secret %s: %w", key.Name, err)
+		}
+		return nil, false, nil
+	}
+
+	return secret, true, nil
 }
 
 // trustProblem explains why the operator can't vouch for a Secret claiming this Buildkit as owner, or
@@ -472,7 +515,7 @@ func trustProblem(obj *v1alpha1.Buildkit, secret *corev1.Secret) string {
 	switch {
 	case err != nil:
 		return "server certificate is unreadable"
-	case obj.Status.ServerCertSHA256 == "" || fingerprint != obj.Status.ServerCertSHA256:
+	case fingerprint != obj.Status.ServerCertSHA256:
 		return "server certificate is not the one the operator recorded"
 	case string(secret.Data[SecretClientCAKey]) != obj.Spec.ClientCA:
 		return "client CA does not match spec.clientCA"
@@ -485,21 +528,21 @@ func trustProblem(obj *v1alpha1.Buildkit, secret *corev1.Secret) string {
 	return ""
 }
 
-// createTLSSecret creates the Buildkit's TLS Secret with a fresh server certificate, storing the result
-// in secret, and records the certificate's fingerprint in status before anything can use the Secret.
-func (r *reconciler) createTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit, key client.ObjectKey, secret *corev1.Secret, log *zap.SugaredLogger) error {
+// mintTLSSecret generates a server certificate, stores it in a new Secret named for its fingerprint,
+// and records the fingerprint in status before anything can use the Secret.
+func (r *reconciler) mintTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit, log *zap.SugaredLogger) (*corev1.Secret, error) {
 	certPEM, keyPEM, err := tlsutil.GenerateServerCert(obj.Name, serverCertValidity, time.Now())
 	if err != nil {
-		return fmt.Errorf("generating server certificate: %w", err)
+		return nil, fmt.Errorf("generating server certificate: %w", err)
 	}
 	fingerprint, err := tlsutil.Fingerprint(certPEM)
 	if err != nil {
-		return fmt.Errorf("fingerprinting server certificate: %w", err)
+		return nil, fmt.Errorf("fingerprinting server certificate: %w", err)
 	}
 
-	*secret = corev1.Secret{
-		Name:      key.Name,
-		Namespace: key.Namespace,
+	secret := &corev1.Secret{
+		Name:      tlsSecretName(obj, fingerprint),
+		Namespace: obj.Namespace,
 		Labels:    map[string]string{TLSSecretLabel: "true"},
 		Type:      corev1.SecretTypeTLS,
 		// Immutable so the material can't be patched between validation and a pod mounting it. Changing
@@ -512,28 +555,29 @@ func (r *reconciler) createTLSSecret(ctx context.Context, obj *v1alpha1.Buildkit
 		},
 	}
 	if err := controllerutil.SetControllerReference(obj, secret, r.scheme); err != nil {
-		return fmt.Errorf("setting owner on TLS secret: %w", err)
+		return nil, fmt.Errorf("setting owner on TLS secret: %w", err)
 	}
 
-	log.Infow("Creating TLS secret", "secret", key.Name)
+	log.Infow("Creating TLS secret", "secret", secret.Name)
 	if err := r.tls.SecretClient.Create(ctx, secret); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			log.Errorw("TLS secret appeared while creating it", "secret", key.Name)
-			return errTLSSecretUnusable
+			// The name comes from a certificate generated just now, so it can't have been predicted.
+			log.Errorw("TLS secret appeared while creating it", "secret", secret.Name)
+			return nil, errTLSSecretUnusable
 		}
-		return fmt.Errorf("creating TLS secret %s: %w", key.Name, err)
+		return nil, fmt.Errorf("creating TLS secret %s: %w", secret.Name, err)
 	}
 
 	// Persist the fingerprint now rather than with the rest of status at the end of the reconcile. If
-	// the operator stopped in between, the next reconcile would find a Secret it can't vouch for and
-	// replace it, which is safe but restarts the pod.
+	// the operator stopped in between, the next reconcile would mint again, leaving this Secret for
+	// garbage collection with the Buildkit.
 	p := fmt.Appendf(nil, `{"status":{"serverCertSHA256":%q}}`, fingerprint)
 	if err := r.c.Status().Patch(ctx, obj, client.RawPatch(k8stypes.MergePatchType, p)); err != nil {
-		return fmt.Errorf("recording server certificate fingerprint: %w", err)
+		return nil, fmt.Errorf("recording server certificate fingerprint: %w", err)
 	}
 	obj.Status.ServerCertSHA256 = fingerprint
 
-	return nil
+	return secret, nil
 }
 
 // buildkitsForTLSTemplate enqueues the Buildkits using a template that requires client TLS.

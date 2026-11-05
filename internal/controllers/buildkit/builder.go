@@ -37,17 +37,12 @@ const (
 // TLSOptions enables mutual TLS on the buildkitd TCP listener.
 type TLSOptions struct {
 	// SecretName names a Secret in the Buildkit's namespace holding tls.crt, tls.key (the server
-	// certificate) and ca.crt (the client CA).
+	// certificate) and ca.crt (the client CA). Each server certificate gets its own Secret, so the name
+	// a pod mounts identifies the certificate it was started with.
 	SecretName string
 	// HealthProxyImage runs the health-only sidecar that kubelet gRPC probes talk to.
 	HealthProxyImage string
-	// ServerCertSHA256 fingerprints the server certificate in the Secret, recorded on the pod as
-	// ServerCertAnnotation so the controller can tell which certificate a pod was started with.
-	ServerCertSHA256 string
 }
-
-// ServerCertAnnotation records the fingerprint of the server certificate a TLS pod was started with.
-const ServerCertAnnotation = "buildkit.seatgeek.io/server-cert-sha256"
 
 type Builder struct {
 	buildkit *v1alpha1.Buildkit
@@ -287,8 +282,8 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 // client CA, and moves kubelet's gRPC probes to a health-only sidecar that reaches buildkitd over its
 // unix socket. It must run after the rootless adjustments, which change the socket path.
 func (b *Builder) configureTLS(pod *corev1.Pod, template *v1alpha1.BuildkitTemplate) error {
-	if b.tls.SecretName == "" || b.tls.HealthProxyImage == "" || b.tls.ServerCertSHA256 == "" {
-		return errors.New("TLS requires a secret name, a health proxy image and a server certificate fingerprint")
+	if b.tls.SecretName == "" || b.tls.HealthProxyImage == "" {
+		return errors.New("TLS requires both a secret name and a health proxy image")
 	}
 
 	container := &pod.Spec.Containers[0]
@@ -305,9 +300,6 @@ func (b *Builder) configureTLS(pod *corev1.Pod, template *v1alpha1.BuildkitTempl
 	if template.Spec.Rootless {
 		socketGID = 1000
 	}
-
-	// Set last so annotations from the Buildkit or template can't override it.
-	pod.Annotations = merge.Maps(pod.Annotations, map[string]string{ServerCertAnnotation: b.tls.ServerCertSHA256})
 
 	pod.Spec.Volumes = append(pod.Spec.Volumes,
 		corev1.Volume{
@@ -378,4 +370,15 @@ func (b *Builder) configureTLS(pod *corev1.Pod, template *v1alpha1.BuildkitTempl
 	})
 
 	return nil
+}
+
+// podTLSSecretName returns the Secret a pod's buildkitd TLS volume mounts, or "" if it has none. It
+// reads the pod spec, which only the operator sets, never metadata a Buildkit's creator can supply.
+func podTLSSecretName(pod *corev1.Pod) string {
+	for _, v := range pod.Spec.Volumes {
+		if v.Name == tlsVolumeName && v.Secret != nil {
+			return v.Secret.SecretName
+		}
+	}
+	return ""
 }

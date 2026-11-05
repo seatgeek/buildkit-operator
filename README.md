@@ -95,7 +95,7 @@ Use the `.status.endpoint` field to connect to the BuildKit instance. When you'r
 By default buildkitd accepts any client that can reach its port. When several tenants share a namespace, set `requireClientTLS: true` on the `BuildkitTemplate` so only the client that created a `Buildkit` can use it:
 
 1. The client generates its own CA and a client certificate signed by it, and puts only the CA certificate in the `Buildkit`'s `spec.clientCA` (immutable). Private keys never leave the client.
-2. The operator generates a server certificate for that instance, stores it in a Secret owned by the `Buildkit`, and starts buildkitd with `--tlscacert` set to the client CA, so connections without a certificate signed by it are refused.
+2. The operator generates a server certificate for that instance, stores it in an immutable Secret owned by the `Buildkit` and named after the certificate's fingerprint (`<name>-tls-<16 hex>`), and starts buildkitd with `--tlscacert` set to the client CA, so connections without a certificate signed by it are refused. A `Buildkit`'s name can be at most 232 characters when its template requires TLS.
 3. Once ready, the status carries what the client needs to verify the server:
 
 ```yaml
