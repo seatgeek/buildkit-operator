@@ -53,6 +53,22 @@ func (v *BuildkitTemplateValidator) validate(obj runtime.Object) (admission.Warn
 		))
 	}
 
+	if bkt.Spec.RequireClientTLS {
+		if bkt.Spec.HealthPort < 1 || bkt.Spec.HealthPort > 65535 {
+			errorList = append(errorList, field.Invalid(
+				field.NewPath("spec", "healthPort"),
+				bkt.Spec.HealthPort,
+				"spec.healthPort must be between 1 and 65535",
+			))
+		} else if bkt.Spec.HealthPort == bkt.Spec.Port {
+			errorList = append(errorList, field.Invalid(
+				field.NewPath("spec", "healthPort"),
+				bkt.Spec.HealthPort,
+				"spec.healthPort must differ from spec.port",
+			))
+		}
+	}
+
 	// Validate the toml syntax
 	var tmp any
 	if _, err := toml.Decode(bkt.Spec.BuildkitdToml, &tmp); err != nil {
@@ -108,6 +124,10 @@ func (b BuildkitTemplateDefaulter) Default(_ context.Context, obj runtime.Object
 
 	if bkt.Spec.Port == 0 {
 		bkt.Spec.Port = 1234
+	}
+
+	if bkt.Spec.HealthPort == 0 {
+		bkt.Spec.HealthPort = 1235
 	}
 
 	if bkt.Spec.Lifecycle.TerminationGracePeriodSeconds == nil {

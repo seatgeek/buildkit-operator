@@ -27,6 +27,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 		name     string
 		buildkit *v1alpha1.Buildkit
 		template *v1alpha1.BuildkitTemplate
+		tls      *TLSOptions
 		wantErr  string
 	}{
 		{
@@ -297,6 +298,69 @@ func TestBuilder_BuildPod(t *testing.T) {
 			},
 		},
 		{
+			name: "client TLS required but not configured",
+			buildkit: &v1alpha1.Buildkit{
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitSpec{
+					Template: "test-template",
+				},
+			},
+			template: &v1alpha1.BuildkitTemplate{
+				Name:      "test-template",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:             1234,
+					HealthPort:       1235,
+					RequireClientTLS: true,
+				},
+			},
+			wantErr: "requires client TLS",
+		},
+		{
+			name: "client TLS",
+			buildkit: &v1alpha1.Buildkit{
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitSpec{
+					Template: "test-template",
+				},
+			},
+			template: &v1alpha1.BuildkitTemplate{
+				Name:      "test-template",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:             1234,
+					HealthPort:       1235,
+					Image:            "moby/buildkit:latest",
+					RequireClientTLS: true,
+				},
+			},
+			tls: &TLSOptions{SecretName: "test-buildkit-tls", HealthProxyImage: "ghcr.io/seatgeek/buildkit-operator:test"},
+		},
+		{
+			name: "client TLS rootless",
+			buildkit: &v1alpha1.Buildkit{
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitSpec{
+					Template: "test-template",
+				},
+			},
+			template: &v1alpha1.BuildkitTemplate{
+				Name:      "test-template",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:             1234,
+					HealthPort:       1235,
+					Image:            "moby/buildkit:rootless",
+					Rootless:         true,
+					RequireClientTLS: true,
+				},
+			},
+			tls: &TLSOptions{SecretName: "test-buildkit-tls", HealthProxyImage: "ghcr.io/seatgeek/buildkit-operator:test"},
+		},
+		{
 			name: "requested resources exceed template defaults",
 			buildkit: &v1alpha1.Buildkit{
 				Name:      "test-buildkit",
@@ -353,7 +417,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 			}
 			client := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objects...).Build()
 
-			builder := NewBuilder(tt.buildkit, client)
+			builder := NewBuilder(tt.buildkit, client).WithTLS(tt.tls)
 			pod, err := builder.BuildPod(t.Context())
 
 			if tt.wantErr != "" {

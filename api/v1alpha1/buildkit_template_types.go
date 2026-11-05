@@ -39,6 +39,19 @@ type BuildkitTemplateSpec struct {
 	// +kubebuilder:default=1234
 	Port int32 `json:"port"`
 
+	// RequireClientTLS makes buildkitd's TCP listener require mutual TLS. Each Buildkit must then supply
+	// spec.clientCA; only clients presenting a certificate signed by that CA can connect.
+	// Kubelet probes go through a health-only sidecar on HealthPort, since gRPC probes cannot present
+	// a client certificate.
+	// +kubebuilder:validation:Optional
+	RequireClientTLS bool `json:"requireClientTLS,omitempty"`
+
+	// HealthPort is the plaintext port on which the health sidecar serves grpc.health.v1 when
+	// RequireClientTLS is set; default is 1235. It exposes nothing but buildkitd's health status.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=1235
+	HealthPort int32 `json:"healthPort,omitempty"`
+
 	// BuildkitdToml is the configuration for Buildkit in TOML format
 	// +kubebuilder:validation:Optional
 	BuildkitdToml string `json:"buildkitdToml,omitempty"`

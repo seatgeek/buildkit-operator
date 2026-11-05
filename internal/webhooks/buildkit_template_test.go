@@ -61,6 +61,20 @@ missing closing bracket`,
 			Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
 		})
 
+		It("should reject a health port equal to the buildkit port when client TLS is required", func() {
+			buildkitTemplate := &v1alpha1.BuildkitTemplate{
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:             1234,
+					HealthPort:       1234,
+					RequireClientTLS: true,
+				},
+			}
+
+			Expect(c.Create(ctx, buildkitTemplate)).To(MatchError(ContainSubstring("spec.healthPort must differ from spec.port")))
+		})
+
 		It("should accept empty TOML", func() {
 			buildkitTemplate := &v1alpha1.BuildkitTemplate{
 				Name:      "test-buildkit-template",
@@ -135,6 +149,7 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 			Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), &created)).To(Succeed())
 
 			Expect(created.Spec.Port).To(Equal(int32(1234)))
+			Expect(created.Spec.HealthPort).To(Equal(int32(1235)))
 			Expect(created.Spec.Image).To(Equal("moby/buildkit:latest"))
 			Expect(created.Spec.ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
 			Expect(*created.Spec.Lifecycle.TerminationGracePeriodSeconds).To(Equal(int64(900)))

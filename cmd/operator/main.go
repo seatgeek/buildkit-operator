@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/reddit/achilles-sdk/pkg/bootstrap"
 	"github.com/reddit/achilles-sdk/pkg/fsm/metrics"
@@ -16,12 +18,14 @@ import (
 	"github.com/reddit/achilles-sdk/pkg/meta"
 	"github.com/reddit/achilles-sdk/pkg/ratelimiter"
 	"github.com/spf13/cobra"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	crtMetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit"
 	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit_template"
 	"github.com/seatgeek/buildkit-operator/internal/controlplane"
+	"github.com/seatgeek/buildkit-operator/internal/healthproxy"
 	intscheme "github.com/seatgeek/buildkit-operator/internal/scheme"
 	"github.com/seatgeek/buildkit-operator/internal/webhooks"
 )
@@ -31,6 +35,9 @@ import (
 // environment variables.
 type opts struct {
 	bootstrap bootstrap.Options
+
+	tlsSecretNamespaces []string
+	healthProxyImage    string
 }
 
 const (
@@ -64,6 +71,32 @@ func rootCommand(ctx context.Context) *cobra.Command {
 	}
 
 	o.bootstrap.AddToFlags(cmd.Flags())
+	cmd.Flags().StringSliceVar(&o.tlsSecretNamespaces, "tls-secret-namespaces", nil, "Namespaces where the operator may create TLS secrets for BuildkitTemplates that set requireClientTLS")
+	cmd.Flags().StringVar(&o.healthProxyImage, "health-proxy-image", "", "Image for the health-proxy sidecar used with requireClientTLS; normally the operator's own image")
+
+	cmd.AddCommand(healthProxyCommand(ctx))
+
+	return cmd
+}
+
+// healthProxyCommand runs the health-only sidecar injected into Buildkit pods that require client TLS.
+func healthProxyCommand(ctx context.Context) *cobra.Command {
+	var listen, socket string
+
+	cmd := &cobra.Command{
+		Use:   "health-proxy",
+		Short: "Serve grpc.health.v1 in plaintext by forwarding to buildkitd's unix socket",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+			defer stop()
+
+			return healthproxy.Run(ctx, listen, socket)
+		},
+	}
+
+	cmd.Flags().StringVar(&listen, "listen", ":1235", "TCP address to serve health checks on")
+	cmd.Flags().StringVar(&socket, "socket", "", "Absolute path of buildkitd's unix socket")
+	_ = cmd.MarkFlagRequired("socket")
 
 	return cmd
 }
@@ -94,8 +127,20 @@ func initStartFunc(o *opts) bootstrap.StartFunc {
 
 		log.Info("starting controllers...")
 
+		// Uncached so the operator never lists or caches Secrets; its RBAC only allows get/create in
+		// the TLS namespaces.
+		secretClient, err := crclient.New(mgr.GetConfig(), crclient.Options{Scheme: mgr.GetScheme(), Mapper: mgr.GetRESTMapper()})
+		if err != nil {
+			return fmt.Errorf("creating secret client: %w", err)
+		}
+		tlsConfig := buildkit.TLSConfig{
+			SecretClient:     secretClient,
+			Namespaces:       o.tlsSecretNamespaces,
+			HealthProxyImage: o.healthProxyImage,
+		}
+
 		rl := ratelimiter.NewDefaultProviderRateLimiter(5)
-		if err := buildkit.SetupController(ctx, cpCtx, mgr, rl, client); err != nil {
+		if err := buildkit.SetupController(ctx, cpCtx, mgr, rl, client, tlsConfig); err != nil {
 			return fmt.Errorf("failed to setup Buildkit controller: %w", err)
 		}
 		if err := buildkit_template.SetupController(ctx, cpCtx, mgr, rl, client); err != nil {

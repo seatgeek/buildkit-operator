@@ -127,6 +127,15 @@ operator:
       # See the Prometheus operator documentation for configurable fields https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#endpoint
       endpointConfig: {}
 
+# Mutual TLS for BuildkitTemplates that set requireClientTLS
+clientTLS:
+  # Namespaces where such templates are used. The operator gets get/create on Secrets in each, via a
+  # namespace-scoped Role, to store every Buildkit's server certificate. With none listed, Buildkits
+  # using those templates never start.
+  namespaces: []
+  # Image for the health-proxy sidecar. Defaults to the operator image, which contains it.
+  healthProxyImage: ""
+
 # RBAC configuration
 rbac:
   # Specifies whether RBAC resources should be created

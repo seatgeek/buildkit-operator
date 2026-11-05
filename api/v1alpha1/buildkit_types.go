@@ -44,6 +44,12 @@ type BuildkitSpec struct {
 	// Labels can be used to attach arbitrary metadata to the Buildkit instance.
 	// +kubebuilder:validation:Optional
 	Labels map[string]string `json:"labels,omitempty"`
+
+	// ClientCA is a PEM-encoded CA certificate. When the template sets requireClientTLS, buildkitd only
+	// accepts clients presenting a certificate signed by this CA. Only the public certificate belongs
+	// here; the client keeps the CA and client private keys to itself.
+	// +kubebuilder:validation:Optional
+	ClientCA string `json:"clientCA,omitempty"`
 }
 
 type BuildkitStatus struct {
@@ -54,6 +60,14 @@ type BuildkitStatus struct {
 
 	// Endpoint is the tcp URI of the Buildkit instance, like tcp://some-buildkit-instance-amd64:1234
 	Endpoint string `json:"endpoint,omitempty"`
+
+	// ServerCA is the PEM-encoded certificate clients should trust for the endpoint when the template
+	// sets requireClientTLS. Empty when TLS is not in use.
+	ServerCA string `json:"serverCA,omitempty"`
+
+	// ServerName is the name clients must verify the server certificate against (the endpoint is a pod
+	// IP, which the certificate does not cover). Empty when TLS is not in use.
+	ServerName string `json:"serverName,omitempty"`
 }
 
 func (b *Buildkit) GetConditions() []api.Condition {

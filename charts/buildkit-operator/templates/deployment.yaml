@@ -38,11 +38,7 @@ spec:
     spec:
       containers:
       - name: manager
-        {{- if .Values.image.digest }}
-        image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
-        {{- else }}
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-        {{- end }}
+        image: {{ include "buildkit-operator.image" . | quote }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         args:
         - --incluster
@@ -55,6 +51,10 @@ spec:
         - --leader-election-id={{ include "buildkit-operator.fullname" . }}-election
         {{- end }}
         - --dev-logging=false
+        {{- with .Values.clientTLS.namespaces }}
+        - --tls-secret-namespaces={{ join "," . }}
+        {{- end }}
+        - --health-proxy-image={{ .Values.clientTLS.healthProxyImage | default (include "buildkit-operator.image" .) }}
         command:
         - /operator
         {{- with .Values.operator.env }}

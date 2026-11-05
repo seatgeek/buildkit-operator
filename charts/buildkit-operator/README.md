@@ -59,6 +59,8 @@ helm install buildkit-operator \
 | `operator.resources`          | Resource limits/requests for operator     | See [values.yaml](./values.yaml)     |
 | `webhook.enabled`             | Enable admission webhooks                 | `true`                               |
 | `webhook.certManager.enabled` | Use cert-manager for webhook certificates | `true`                               |
+| `clientTLS.namespaces`        | Namespaces using `requireClientTLS` templates; the operator gets `get`/`create` on Secrets there | `[]` |
+| `clientTLS.healthProxyImage`  | Image for the TLS health-proxy sidecar    | `""` (uses the operator image)       |
 | `rbac.create`                 | Create RBAC resources                     | `true`                               |
 | `crds.install`                | Install CRDs with chart                   | `true`                               |
 

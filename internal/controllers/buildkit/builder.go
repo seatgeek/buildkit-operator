@@ -6,10 +6,13 @@ package buildkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"path"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
@@ -18,9 +21,32 @@ import (
 	"github.com/seatgeek/buildkit-operator/internal/merge"
 )
 
+// SecretClientCAKey is the TLS Secret key holding the Buildkit's client CA.
+const SecretClientCAKey = "ca.crt"
+
+// tlsCACertFlag makes buildkitd require client certificates signed by the given CA. Its presence in a
+// pod's args is how the controller tells a TLS pod from a plaintext one.
+const tlsCACertFlag = "--tlscacert"
+
+const (
+	tlsVolumeName    = "buildkitd-tls"
+	tlsMountPath     = "/etc/buildkit-tls"
+	socketVolumeName = "buildkitd-socket"
+)
+
+// TLSOptions enables mutual TLS on the buildkitd TCP listener.
+type TLSOptions struct {
+	// SecretName names a Secret in the Buildkit's namespace holding tls.crt, tls.key (the server
+	// certificate) and ca.crt (the client CA).
+	SecretName string
+	// HealthProxyImage runs the health-only sidecar that kubelet gRPC probes talk to.
+	HealthProxyImage string
+}
+
 type Builder struct {
 	buildkit *v1alpha1.Buildkit
 	cl       client.Reader
+	tls      *TLSOptions
 }
 
 func NewBuilder(buildkit *v1alpha1.Buildkit, cl client.Reader) *Builder {
@@ -30,12 +56,23 @@ func NewBuilder(buildkit *v1alpha1.Buildkit, cl client.Reader) *Builder {
 	}
 }
 
+// WithTLS configures the pod for mutual TLS. It is required when the template sets requireClientTLS.
+func (b *Builder) WithTLS(opts *TLSOptions) *Builder {
+	b.tls = opts
+	return b
+}
+
 func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 	// Load the referenced BuildkitTemplate
 	var template v1alpha1.BuildkitTemplate
 	key := client.ObjectKey{Name: b.buildkit.Spec.Template, Namespace: b.buildkit.Namespace}
 	if err := b.cl.Get(ctx, key, &template); err != nil {
 		return nil, err
+	}
+
+	// Never fall back to a plaintext listener for a template that requires TLS.
+	if template.Spec.RequireClientTLS && b.tls == nil {
+		return nil, fmt.Errorf("BuildkitTemplate %q requires client TLS but no TLS configuration was provided", template.Name)
 	}
 
 	// We define the overrideable defaults first; non-overrideable values will be set further down
@@ -145,6 +182,12 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 		}
 	}
 
+	if b.tls != nil {
+		if err := b.configureTLS(pod, &template); err != nil {
+			return nil, err
+		}
+	}
+
 	if template.Spec.Observability.DebugLogging {
 		container.Args = append(container.Args, "--debug")
 	}
@@ -232,4 +275,98 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 	}
 
 	return pod, nil
+}
+
+// configureTLS makes buildkitd's TCP listener require client certificates signed by the Buildkit's
+// client CA, and moves kubelet's gRPC probes to a health-only sidecar that reaches buildkitd over its
+// unix socket. It must run after the rootless adjustments, which change the socket path.
+func (b *Builder) configureTLS(pod *corev1.Pod, template *v1alpha1.BuildkitTemplate) error {
+	if b.tls.SecretName == "" || b.tls.HealthProxyImage == "" {
+		return errors.New("TLS requires both a secret name and a health proxy image")
+	}
+
+	container := &pod.Spec.Containers[0]
+
+	socketPath, ok := strings.CutPrefix(container.Args[1], "unix://")
+	if !ok {
+		return fmt.Errorf("unexpected buildkitd socket address %q", container.Args[1])
+	}
+	socketDir := path.Dir(socketPath)
+
+	// The socket is owned by buildkitd's group with mode 0660, so the sidecar joins that group
+	// instead of running as buildkitd's user.
+	socketGID := int64(0)
+	if template.Spec.Rootless {
+		socketGID = 1000
+	}
+
+	pod.Spec.Volumes = append(pod.Spec.Volumes,
+		corev1.Volume{
+			Name: tlsVolumeName,
+			Secret: &corev1.SecretVolumeSource{
+				SecretName: b.tls.SecretName,
+				// buildkitd may run as a non-root user (1000 when rootless) that does not own the
+				// projected files. Only the buildkit container mounts this volume.
+				DefaultMode: new(int32(0o444)),
+			},
+		},
+		corev1.Volume{
+			Name:     socketVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	)
+
+	container.VolumeMounts = append(container.VolumeMounts,
+		corev1.VolumeMount{Name: tlsVolumeName, MountPath: tlsMountPath, ReadOnly: true},
+		corev1.VolumeMount{Name: socketVolumeName, MountPath: socketDir},
+	)
+
+	container.Args = append(container.Args,
+		"--tlscert", path.Join(tlsMountPath, corev1.TLSCertKey),
+		"--tlskey", path.Join(tlsMountPath, corev1.TLSPrivateKeyKey),
+		tlsCACertFlag, path.Join(tlsMountPath, SecretClientCAKey),
+	)
+
+	for _, probe := range []*corev1.Probe{container.StartupProbe, container.ReadinessProbe, container.LivenessProbe} {
+		probe.GRPC.Port = template.Spec.HealthPort
+	}
+
+	pod.Spec.InitContainers = append(pod.Spec.InitContainers, corev1.Container{
+		Name:            "health-proxy",
+		Image:           b.tls.HealthProxyImage,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command: []string{
+			"/operator", "health-proxy",
+			"--listen", fmt.Sprintf(":%d", template.Spec.HealthPort),
+			"--socket", socketPath,
+		},
+		// Native sidecar: starts before buildkit and runs for the pod's lifetime.
+		RestartPolicy: new(corev1.ContainerRestartPolicyAlways),
+		Ports: []corev1.ContainerPort{
+			{Name: "health", ContainerPort: template.Spec.HealthPort, Protocol: corev1.ProtocolTCP},
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: socketVolumeName, MountPath: socketDir},
+		},
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("10m"),
+				corev1.ResourceMemory: resource.MustParse("16Mi"),
+			},
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("64Mi"),
+			},
+		},
+		SecurityContext: &corev1.SecurityContext{
+			RunAsUser:                new(int64(65532)),
+			RunAsGroup:               new(socketGID),
+			RunAsNonRoot:             new(true),
+			ReadOnlyRootFilesystem:   new(true),
+			AllowPrivilegeEscalation: new(false),
+			Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+			SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+		},
+	})
+
+	return nil
 }

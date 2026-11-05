@@ -31,6 +31,14 @@ import (
 	"github.com/seatgeek/buildkit-operator/internal/test"
 )
 
+// Namespaces the TLS tests run in; the controller only manages TLS secrets in these. Envtest never
+// finishes deleting namespaces, so each is used by a single test.
+const (
+	tlsNamespace       = "tls-test"
+	tlsFlipNamespace   = "tls-flip-test"
+	tlsSecretNamespace = "tls-secret-test"
+)
+
 var (
 	ctx     context.Context
 	testEnv *sdktest.TestEnv
@@ -73,7 +81,17 @@ var _ = BeforeSuite(func() {
 					Metrics: metrics.MustMakeMetrics(scheme, prometheus.NewRegistry()),
 				}
 
-				return buildkit.SetupController(ctx, cpCtx, mgr, rl, clientApplicator)
+				secretClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme(), Mapper: mgr.GetRESTMapper()})
+				if err != nil {
+					return err
+				}
+				tlsConfig := buildkit.TLSConfig{
+					SecretClient:     secretClient,
+					Namespaces:       []string{tlsNamespace, tlsFlipNamespace, tlsSecretNamespace},
+					HealthProxyImage: "buildkit-operator:test",
+				}
+
+				return buildkit.SetupController(ctx, cpCtx, mgr, rl, clientApplicator, tlsConfig)
 			},
 		).
 		Start()

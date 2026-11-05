@@ -16,3 +16,8 @@ var conditionDeployed = api.Condition{
 	Status: corev1.ConditionTrue,
 	Reason: api.ReasonAvailable,
 }
+
+const (
+	// ReasonClientCARequired means the template requires client TLS but the Buildkit has no spec.clientCA.
+	ReasonClientCARequired api.ConditionReason = "ClientCARequired"
+)

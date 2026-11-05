@@ -47,6 +47,13 @@ spec:
                 items:
                   type: string
                 type: array
+              healthPort:
+                default: 1235
+                description: |-
+                  HealthPort is the plaintext port on which the health sidecar serves grpc.health.v1 when
+                  RequireClientTLS is set; default is 1235. It exposes nothing but buildkitd's health status.
+                format: int32
+                type: integer
               hostUsers:
                 default: true
                 description: |-
@@ -126,6 +133,13 @@ spec:
                   will listen; default is 1234
                 format: int32
                 type: integer
+              requireClientTLS:
+                description: |-
+                  RequireClientTLS makes buildkitd's TCP listener require mutual TLS. Each Buildkit must then supply
+                  spec.clientCA; only clients presenting a certificate signed by that CA can connect.
+                  Kubelet probes go through a health-only sidecar on HealthPort, since gRPC probes cannot present
+                  a client certificate.
+                type: boolean
               resources:
                 properties:
                   default:

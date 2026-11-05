@@ -90,6 +90,31 @@ status:
 
 Use the `.status.endpoint` field to connect to the BuildKit instance. When you're done, delete the `Buildkit` resource and the associated pod will be cleaned up automatically.
 
+### Mutual TLS
+
+By default buildkitd accepts any client that can reach its port. When several tenants share a namespace, set `requireClientTLS: true` on the `BuildkitTemplate` so only the client that created a `Buildkit` can use it:
+
+1. The client generates its own CA and a client certificate signed by it, and puts only the CA certificate in the `Buildkit`'s `spec.clientCA` (immutable). Private keys never leave the client.
+2. The operator generates a server certificate for that instance, stores it in a Secret owned by the `Buildkit`, and starts buildkitd with `--tlscacert` set to the client CA, so connections without a certificate signed by it are refused.
+3. Once ready, the status carries what the client needs to verify the server:
+
+```yaml
+status:
+  endpoint: tcp://10.1.2.3:1234
+  serverCA: |
+    -----BEGIN CERTIFICATE-----
+    ...
+  serverName: buildkit-arm64-instance
+```
+
+```bash
+docker buildx create --driver remote \
+  --driver-opt cacert=server-ca.pem,cert=client.pem,key=client-key.pem,servername=buildkit-arm64-instance \
+  tcp://10.1.2.3:1234
+```
+
+Kubelet gRPC probes can't present a client certificate, so these pods also run a `health-proxy` sidecar that serves only `grpc.health.v1` in plaintext on `healthPort` (default `1235`), answering each check from buildkitd's unix socket. The operator needs the Helm value `clientTLS.namespaces` to list the namespaces where such templates are used; it gets `get`/`create` on Secrets only there. Turning `requireClientTLS` on stops any pod of that template still running without TLS within about a second, skipping its usual grace period; it is replaced by a TLS pod if its `Buildkit` has a `clientCA`.
+
 ## Installation
 
 ### Helm Chart (Recommended)

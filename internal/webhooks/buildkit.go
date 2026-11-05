@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
+	"github.com/seatgeek/buildkit-operator/internal/tlsutil"
 )
 
 // +kubebuilder:webhook:path=/validate-buildkit-seatgeek-io-v1alpha1-buildkit,mutating=false,failurePolicy=fail,sideEffects=None,groups=buildkit.seatgeek.io,resources=buildkits,verbs=create;update,versions=v1alpha1,name=mbuildkit.kb.io,admissionReviewVersions=v1
@@ -52,11 +53,14 @@ func (v *BuildkitValidator) ValidateCreate(ctx context.Context, obj runtime.Obje
 			return nil, apierrors.NewInternalError(fmt.Errorf("failed to get BuildkitTemplate '%s' in namespace '%s': %w", bk.Spec.Template, bk.Namespace, err))
 		}
 		errorList = append(errorList, field.NotFound(field.NewPath("spec", "template"), bk.Spec.Template))
-	} else if template.Spec.Lifecycle.RequireOwner && len(bk.GetOwnerReferences()) == 0 {
-		errorList = append(errorList, field.Required(
-			field.NewPath("metadata", "ownerReferences"),
-			fmt.Sprintf("BuildkitTemplate '%s' requires owner references but none are present", bk.Spec.Template),
-		))
+	} else {
+		errorList = append(errorList, validateAgainstTemplate(bk, &template)...)
+	}
+
+	if bk.Spec.ClientCA != "" {
+		if _, err := tlsutil.ParseCACertPEM(bk.Spec.ClientCA); err != nil {
+			errorList = append(errorList, field.Invalid(field.NewPath("spec", "clientCA"), "<PEM omitted>", err.Error()))
+		}
 	}
 
 	if len(errorList) > 0 {
@@ -94,4 +98,30 @@ func (v *BuildkitValidator) ValidateUpdate(_ context.Context, oldObj, newObj run
 func (v *BuildkitValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	// No validation needed on delete
 	return nil, nil
+}
+
+func validateAgainstTemplate(bk *v1alpha1.Buildkit, template *v1alpha1.BuildkitTemplate) field.ErrorList {
+	var errorList field.ErrorList
+
+	if template.Spec.Lifecycle.RequireOwner && len(bk.GetOwnerReferences()) == 0 {
+		errorList = append(errorList, field.Required(
+			field.NewPath("metadata", "ownerReferences"),
+			fmt.Sprintf("BuildkitTemplate '%s' requires owner references but none are present", bk.Spec.Template),
+		))
+	}
+
+	if template.Spec.RequireClientTLS {
+		// The TLS Secret is named "<name>-tls" and must fit the 253-character object name limit.
+		if len(bk.Name) > 249 {
+			errorList = append(errorList, field.TooLong(field.NewPath("metadata", "name"), bk.Name, 249))
+		}
+		if bk.Spec.ClientCA == "" {
+			errorList = append(errorList, field.Required(
+				field.NewPath("spec", "clientCA"),
+				fmt.Sprintf("BuildkitTemplate '%s' requires client TLS; supply the PEM CA certificate that signs your client certificate", bk.Spec.Template),
+			))
+		}
+	}
+
+	return errorList
 }
