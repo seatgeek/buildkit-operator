@@ -313,6 +313,60 @@ func TestApplyMaximums(t *testing.T) {
 			},
 			wantModified: true,
 		},
+		{
+			name: "zero limits are replaced by maximum and keep default requests",
+			maximum: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("24"),
+				corev1.ResourceMemory: resource.MustParse("18Gi"),
+			},
+			desired: []corev1.ResourceRequirements{
+				{
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("3"),
+						corev1.ResourceMemory: resource.MustParse("10Gi"),
+					},
+				},
+				{
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("0"),
+						corev1.ResourceMemory: resource.MustParse("0"),
+					},
+				},
+			},
+			want: corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("24"),
+					corev1.ResourceMemory: resource.MustParse("18Gi"),
+				},
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("3"),
+					corev1.ResourceMemory: resource.MustParse("10Gi"),
+				},
+			},
+			wantModified: true,
+		},
+		{
+			name: "negative limits are replaced by maximum",
+			maximum: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2"),
+				corev1.ResourceMemory: resource.MustParse("4Gi"),
+			},
+			desired: []corev1.ResourceRequirements{
+				{
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("-1"),
+						corev1.ResourceMemory: resource.MustParse("-1Gi"),
+					},
+				},
+			},
+			want: corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("2"),
+					corev1.ResourceMemory: resource.MustParse("4Gi"),
+				},
+			},
+			wantModified: true,
+		},
 	}
 
 	for _, tt := range tests {
