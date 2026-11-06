@@ -392,6 +392,10 @@ func clientCAInvalid(problem string) types.Result {
 	}
 }
 
+// maxClientCARecheck bounds how long a TLS Buildkit goes between reconciles while waiting for its
+// client CA to expire.
+const maxClientCARecheck = 24 * time.Hour
+
 // recheckAtClientCAExpiry keeps the instance ready but reconciles again just after the client CA
 // expires. Nothing else would: the pod stays healthy, so no event fires, yet no client can connect.
 // Achilles requeues only when RequeueMsg is set, and counts any requeue as an unsuccessful reconcile
@@ -401,11 +405,12 @@ func (r *reconciler) recheckAtClientCAExpiry(obj *v1alpha1.Buildkit) types.Resul
 	if err != nil {
 		return types.ErrorResult(fmt.Errorf("parsing client CA: %w", err))
 	}
-	// clientCAProblem treats NotAfter itself as still valid.
+	// clientCAProblem treats NotAfter itself as still valid. Capped, since Sub saturates for a CA that
+	// expires centuries from now and adding to it would overflow.
 	return types.Result{
 		Done:         true,
 		RequeueMsg:   "Re-checking at client CA expiry",
-		RequeueAfter: ca.NotAfter.Sub(r.now()) + time.Second,
+		RequeueAfter: min(ca.NotAfter.Sub(r.now()), maxClientCARecheck) + time.Second,
 	}
 }
 

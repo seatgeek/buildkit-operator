@@ -58,17 +58,30 @@ func TestRecheckAtClientCAExpiry(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now().Truncate(time.Second)
-	expiry := now.Add(36 * time.Hour)
 	r := &reconciler{now: func() time.Time { return now }}
-	obj := &v1alpha1.Buildkit{Spec: v1alpha1.BuildkitSpec{ClientCA: test.CACertPEMValid(now.Add(-time.Minute), expiry)}}
+	for _, tc := range []struct {
+		name   string
+		expiry time.Time
+		want   time.Duration
+	}{
+		{"soon", now.Add(2 * time.Hour), 2*time.Hour + time.Second},
+		{"later than the cap", now.Add(36 * time.Hour), maxClientCARecheck + time.Second},
+		{"centuries away", time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC), maxClientCARecheck + time.Second},
+	} {
+		obj := &v1alpha1.Buildkit{Spec: v1alpha1.BuildkitSpec{ClientCA: test.CACertPEMValid(now.Add(-time.Minute), tc.expiry)}}
+		result := r.recheckAtClientCAExpiry(obj)
+		require.NoError(t, result.Err, tc.name)
+		assert.True(t, result.Done, "%s: the instance stays ready until the CA expires", tc.name)
+		assert.False(t, result.RequeueAfterCompletion, "%s: requeueing after completion would mark the instance not ready", tc.name)
+		assert.Nil(t, result.CustomStatusCondition, tc.name)
+		assert.Equal(t, tc.want, result.RequeueAfter, tc.name)
+	}
 
-	result := r.recheckAtClientCAExpiry(obj)
-	require.NoError(t, result.Err)
-	assert.True(t, result.Done, "the instance stays ready until the CA expires")
-	assert.False(t, result.RequeueAfterCompletion, "requeueing after completion would mark the instance not ready")
-	assert.Nil(t, result.CustomStatusCondition)
-	assert.Equal(t, 36*time.Hour+time.Second, result.RequeueAfter, "must reconcile once the CA has expired, not at the instant it still counts as valid")
-	assert.NotEmpty(t, clientCAProblem(obj.Spec.ClientCA, now.Add(result.RequeueAfter)), "the requeued reconcile must see the CA as expired")
+	// The requeue lands just after the CA counts as expired, not at the instant it is still valid.
+	expiry := now.Add(2 * time.Hour)
+	ca := test.CACertPEMValid(now.Add(-time.Minute), expiry)
+	assert.Empty(t, clientCAProblem(ca, expiry))
+	assert.NotEmpty(t, clientCAProblem(ca, expiry.Add(time.Second)))
 }
 
 func TestRunBuildkit_withoutHelperImage(t *testing.T) {
