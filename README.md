@@ -94,11 +94,11 @@ Use the `.status.endpoint` field to connect to the BuildKit instance. When you'r
 
 By default buildkitd accepts any client that can reach its port. When several tenants share a namespace, set `requireClientTLS: true` on the `BuildkitTemplate` so only the client that created a `Buildkit` can use it:
 
-1. The client generates its own CA and a client certificate signed by it, and puts only the CA certificate in the `Buildkit`'s `spec.clientCA` (immutable). Private keys never leave the client.
+1. The client generates its own CA and a client certificate signed by it, and puts only the CA certificate in the `Buildkit`'s `spec.clientCA` (immutable). Private keys never leave the client. The CA must be valid now and allow signing certificates (`keyCertSign`, and `clientAuth` if it restricts extended key usage). These checks catch common mistakes up front; security doesn't depend on them, since a CA that slips through only means no client can connect. Clients that create a short-lived CA per `Buildkit` should use a template whose `lifecycle.activeDeadlineSeconds` is no longer than the CA's lifetime.
 2. The `Buildkit`'s pod mints its own server key and certificate: a `gen-cert` init container writes them to an in-memory volume and reports only the certificate in its termination message, which kubelet copies into the pod's status. buildkitd starts with `--tlscacert` set to the client CA, so connections without a certificate signed by it are refused. The server key never leaves the pod, and the operator needs no access to Secrets. Only kubelet writes container statuses, so the published certificate can only be forged by someone who can create, modify or update the status of pods in the namespace; Kubernetes already lets them run as any service account and read any Secret there, so they must be trusted anyway.
 
    The certificate is minted to outlive the pod, so TLS pods always have a deadline: `lifecycle.activeDeadlineSeconds` defaults to 90 days for these templates and may be at most 366 days. Each certificate lasts the deadline plus the termination grace period plus 30 minutes. It is never rotated while the pod runs, so builds aren't interrupted; long-lived instances end at their deadline, after which the `Buildkit` must be recreated. A new pod (or a restarted pod sandbox) mints a new certificate, and the status follows it. The client CA must be valid when the `Buildkit` is created; you get a warning if it expires before the pod's deadline.
-3. Once ready, the status carries what the client needs to verify the server:
+3. While the pod is running and healthy, the status carries what the client needs to verify the server (all of it is withdrawn otherwise):
 
 ```yaml
 status:
