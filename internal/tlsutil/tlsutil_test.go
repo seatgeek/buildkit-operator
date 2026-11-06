@@ -8,14 +8,14 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/hex"
 	"encoding/pem"
 	"math/big"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -108,36 +108,6 @@ func leafCertPEM(t *testing.T) string {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 }
 
-func TestFingerprint(t *testing.T) {
-	t.Parallel()
-
-	certPEM, _, err := GenerateServerCert("a", time.Hour, time.Now())
-	require.NoError(t, err)
-	block, _ := pem.Decode(certPEM)
-
-	got, err := Fingerprint(certPEM)
-	require.NoError(t, err)
-	sum := sha256.Sum256(block.Bytes)
-	assert.Equal(t, hex.EncodeToString(sum[:]), got)
-
-	_, err = Fingerprint([]byte("not pem"))
-	require.Error(t, err)
-}
-
-func TestValidateServerKeyPair(t *testing.T) {
-	t.Parallel()
-
-	certPEM, keyPEM, err := GenerateServerCert("buildkit-a", time.Hour, time.Now())
-	require.NoError(t, err)
-	_, otherKey, err := GenerateServerCert("buildkit-a", time.Hour, time.Now())
-	require.NoError(t, err)
-
-	require.NoError(t, ValidateServerKeyPair(certPEM, keyPEM, "buildkit-a"))
-	require.ErrorContains(t, ValidateServerKeyPair(certPEM, otherKey, "buildkit-a"), "do not form a pair")
-	require.ErrorContains(t, ValidateServerKeyPair(certPEM, nil, "buildkit-a"), "do not form a pair")
-	require.Error(t, ValidateServerKeyPair(certPEM, keyPEM, "buildkit-b"), "certificate must cover the instance name")
-}
-
 func caCertPEM(t *testing.T, usage x509.KeyUsage) string {
 	t.Helper()
 	return caCertPEMFull(t, usage, nil)
@@ -176,17 +146,89 @@ func caCertPEMWithCriticalExtension(t *testing.T) string {
 	return caCertPEMFull(t, x509.KeyUsageCertSign, nil, ext)
 }
 
-func TestNotAfter(t *testing.T) {
+func TestParseServerCertPEM(t *testing.T) {
 	t.Parallel()
 
+	certPEM, _, err := GenerateServerCert("buildkit-a", time.Hour, time.Now())
+	require.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		data    string
+		wantErr string
+	}{
+		{name: "valid", data: string(certPEM)},
+		{name: "wrong name", data: string(certPEM), wantErr: "buildkit-b"},
+		{name: "CA", data: test.CACertPEM(), wantErr: "must not be a CA"},
+		{name: "two certificates", data: string(certPEM) + string(certPEM), wantErr: "exactly one certificate"},
+		{name: "garbage", data: "not pem", wantErr: "expected a PEM-encoded CERTIFICATE block"},
+		{name: "empty", data: "", wantErr: "expected a PEM-encoded CERTIFICATE block"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			serverName := "buildkit-a"
+			if tt.name == "wrong name" {
+				serverName = "buildkit-b"
+			}
+			_, err := ParseServerCertPEM([]byte(tt.data), serverName)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestWriteServerFiles(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
 	now := time.Now().Truncate(time.Second)
-	certPEM, _, err := GenerateServerCert("a", 2*time.Hour, now)
+	caPEM := test.CACertPEM()
+
+	certPEM, err := WriteServerFiles(dir, "buildkit-a", caPEM, 2*time.Hour, now)
 	require.NoError(t, err)
 
-	got, err := NotAfter(certPEM)
-	require.NoError(t, err)
-	assert.True(t, got.Equal(now.Add(2*time.Hour)), "got %s", got)
+	read := func(name string, mode os.FileMode) []byte {
+		t.Helper()
+		info, err := os.Stat(filepath.Join(dir, name))
+		require.NoError(t, err)
+		assert.Equal(t, mode, info.Mode().Perm(), name)
+		data, err := os.ReadFile(filepath.Join(dir, name)) //nolint:gosec // test temp dir
+		require.NoError(t, err)
+		return data
+	}
+	assert.Equal(t, caPEM, string(read(ClientCAFile, 0o444)))
+	assert.Equal(t, certPEM, read(CertFile, 0o444))
+	keyPEM := read(KeyFile, 0o400)
 
-	_, err = NotAfter([]byte("not pem"))
-	require.Error(t, err)
+	_, err = tls.X509KeyPair(certPEM, keyPEM)
+	require.NoError(t, err, "certificate and key must form a pair")
+	cert, err := ParseServerCertPEM(certPEM, "buildkit-a")
+	require.NoError(t, err)
+	assert.True(t, cert.NotBefore.Equal(now.Add(-ClockSkew)), "NotBefore %s", cert.NotBefore)
+	assert.True(t, cert.NotAfter.Equal(now.Add(2*time.Hour)), "NotAfter %s", cert.NotAfter)
+
+	// A rerun replaces the read-only files with a new key.
+	again, err := WriteServerFiles(dir, "buildkit-a", caPEM, 2*time.Hour, now)
+	require.NoError(t, err)
+	assert.NotEqual(t, certPEM, again)
+	assert.NotEqual(t, keyPEM, read(KeyFile, 0o400))
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 3, "no temporary files may be left behind")
+}
+
+func TestWriteServerFiles_rejectsBadClientCA(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	_, err := WriteServerFiles(dir, "buildkit-a", "not pem", time.Hour, time.Now())
+	require.ErrorContains(t, err, "client CA")
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "nothing may be written for a bad client CA")
 }

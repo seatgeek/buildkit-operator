@@ -27,7 +27,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 		name     string
 		buildkit *v1alpha1.Buildkit
 		template *v1alpha1.BuildkitTemplate
-		tls      *TLSOptions
+		tlsImage string
 		wantErr  string
 	}{
 		{
@@ -318,33 +318,13 @@ func TestBuilder_BuildPod(t *testing.T) {
 			wantErr: "requires client TLS",
 		},
 		{
-			name: "client TLS without a health proxy image",
-			buildkit: &v1alpha1.Buildkit{
-				Name:      "test-buildkit",
-				Namespace: "test-ns",
-				Spec: v1alpha1.BuildkitSpec{
-					Template: "test-template",
-				},
-			},
-			template: &v1alpha1.BuildkitTemplate{
-				Name:      "test-template",
-				Namespace: "test-ns",
-				Spec: v1alpha1.BuildkitTemplateSpec{
-					Port:             1234,
-					HealthPort:       1235,
-					RequireClientTLS: true,
-				},
-			},
-			tls:     &TLSOptions{SecretName: "test-buildkit-tls"},
-			wantErr: "requires both a secret name and a health proxy image",
-		},
-		{
 			name: "client TLS",
 			buildkit: &v1alpha1.Buildkit{
 				Name:      "test-buildkit",
 				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
+					ClientCA: "test-client-ca-pem",
 				},
 			},
 			template: &v1alpha1.BuildkitTemplate{
@@ -357,7 +337,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 					RequireClientTLS: true,
 				},
 			},
-			tls: &TLSOptions{SecretName: "test-buildkit-tls", HealthProxyImage: "ghcr.io/seatgeek/buildkit-operator:test"},
+			tlsImage: "ghcr.io/seatgeek/buildkit-operator:test",
 		},
 		{
 			name: "client TLS rootless",
@@ -366,6 +346,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 				Namespace: "test-ns",
 				Spec: v1alpha1.BuildkitSpec{
 					Template: "test-template",
+					ClientCA: "test-client-ca-pem",
 				},
 			},
 			template: &v1alpha1.BuildkitTemplate{
@@ -379,7 +360,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 					RequireClientTLS: true,
 				},
 			},
-			tls: &TLSOptions{SecretName: "test-buildkit-tls", HealthProxyImage: "ghcr.io/seatgeek/buildkit-operator:test"},
+			tlsImage: "ghcr.io/seatgeek/buildkit-operator:test",
 		},
 		{
 			name: "requested resources exceed template defaults",
@@ -438,7 +419,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 			}
 			client := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objects...).Build()
 
-			builder := NewBuilder(tt.buildkit, client).WithTLS(tt.tls)
+			builder := NewBuilder(tt.buildkit, client).WithTLS(tt.tlsImage)
 			pod, err := builder.BuildPod(t.Context())
 
 			if tt.wantErr != "" {
@@ -462,12 +443,12 @@ func TestBuilder_BuildPod(t *testing.T) {
 func TestBuilder_configureTLS_requiresUnixSocket(t *testing.T) {
 	t.Parallel()
 
-	b := NewBuilder(&v1alpha1.Buildkit{}, nil).WithTLS(&TLSOptions{SecretName: "s", HealthProxyImage: "img"})
+	b := NewBuilder(&v1alpha1.Buildkit{}, nil).WithTLS("img")
 	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{
 		Args: []string{"--addr", "tcp://0.0.0.0:9999"},
 	}}}}
 
 	err := b.configureTLS(pod, &v1alpha1.BuildkitTemplate{})
 	require.ErrorContains(t, err, "unexpected buildkitd socket address")
-	assert.Empty(t, pod.Spec.InitContainers, "no sidecar on a pod the builder refused")
+	assert.Empty(t, pod.Spec.InitContainers, "no helper containers on a pod the builder refused")
 }

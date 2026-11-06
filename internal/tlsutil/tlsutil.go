@@ -9,27 +9,26 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
+	"path/filepath"
 	"slices"
 	"time"
 )
 
 const pemCertificate = "CERTIFICATE"
 
-// ClockSkew tolerates a client CA issued on a machine whose clock runs a little ahead.
+// ClockSkew is how far apart the clocks of the machines issuing and checking a certificate may be.
 const ClockSkew = 5 * time.Minute
 
-// ParseCACertPEM checks that data holds exactly one PEM certificate usable as a CA.
-func ParseCACertPEM(data string) (*x509.Certificate, error) {
-	block, rest := pem.Decode([]byte(data))
+// parseOneCertPEM parses data that must hold exactly one PEM certificate and nothing else.
+func parseOneCertPEM(data []byte) (*x509.Certificate, error) {
+	block, rest := pem.Decode(data)
 	if block == nil || block.Type != pemCertificate {
 		return nil, errors.New("expected a PEM-encoded CERTIFICATE block")
 	}
@@ -40,6 +39,15 @@ func ParseCACertPEM(data string) (*x509.Certificate, error) {
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("parsing certificate: %w", err)
+	}
+	return cert, nil
+}
+
+// ParseCACertPEM checks that data holds exactly one PEM certificate usable as a CA.
+func ParseCACertPEM(data string) (*x509.Certificate, error) { //nolint:unparam // other packages use the certificate
+	cert, err := parseOneCertPEM([]byte(data))
+	if err != nil {
+		return nil, err
 	}
 	if !cert.IsCA || !cert.BasicConstraintsValid {
 		return nil, errors.New("certificate is not a CA (basicConstraints CA:TRUE required)")
@@ -82,7 +90,7 @@ func GenerateServerCert(serverName string, validity time.Duration, now time.Time
 		SerialNumber:          serial,
 		Subject:               pkix.Name{CommonName: serverName},
 		DNSNames:              []string{serverName},
-		NotBefore:             now.Add(-5 * time.Minute), // tolerate clock skew between operator and clients
+		NotBefore:             now.Add(-ClockSkew),
 		NotAfter:              now.Add(validity),
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -104,39 +112,73 @@ func GenerateServerCert(serverName string, validity time.Duration, now time.Time
 		nil
 }
 
-// Fingerprint returns the hex SHA-256 of the first PEM certificate's DER bytes.
-func Fingerprint(certPEM []byte) (string, error) {
-	block, _ := pem.Decode(certPEM)
-	if block == nil || block.Type != pemCertificate {
-		return "", errors.New("expected a PEM-encoded CERTIFICATE block")
+// ParseServerCertPEM checks that data holds exactly one PEM server certificate valid for serverName.
+func ParseServerCertPEM(data []byte, serverName string) (*x509.Certificate, error) {
+	cert, err := parseOneCertPEM(data)
+	if err != nil {
+		return nil, err
 	}
-	sum := sha256.Sum256(block.Bytes)
-	return hex.EncodeToString(sum[:]), nil
+	if cert.IsCA {
+		return nil, errors.New("server certificate must not be a CA")
+	}
+	if err := cert.VerifyHostname(serverName); err != nil {
+		return nil, err
+	}
+	return cert, nil
 }
 
-// ValidateServerKeyPair checks that the key matches the certificate and that the certificate is valid
-// for serverName.
-func ValidateServerKeyPair(certPEM, keyPEM []byte, serverName string) error {
-	pair, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		return fmt.Errorf("certificate and key do not form a pair: %w", err)
+// Names of the files WriteServerFiles creates.
+const (
+	CertFile     = "tls.crt"
+	KeyFile      = "tls.key"
+	ClientCAFile = "ca.crt"
+)
+
+// WriteServerFiles writes buildkitd's TLS material into dir: a new server key and certificate for
+// serverName, valid from now for validFor, and the client CA. It returns the certificate PEM. Each
+// file is replaced atomically, so a rerun (after a pod sandbox restart) can overwrite read-only files.
+func WriteServerFiles(dir, serverName, clientCA string, validFor time.Duration, now time.Time) ([]byte, error) {
+	if validFor <= 0 {
+		return nil, fmt.Errorf("validity must be positive, got %s", validFor)
 	}
-	leaf, err := x509.ParseCertificate(pair.Certificate[0])
-	if err != nil {
-		return fmt.Errorf("parsing certificate: %w", err)
+	if _, err := ParseCACertPEM(clientCA); err != nil {
+		return nil, fmt.Errorf("client CA: %w", err)
 	}
-	return leaf.VerifyHostname(serverName)
+	certPEM, keyPEM, err := GenerateServerCert(serverName, validFor, now)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range []struct {
+		name string
+		data []byte
+		mode os.FileMode
+	}{
+		{ClientCAFile, []byte(clientCA), 0o444},
+		{CertFile, certPEM, 0o444},
+		{KeyFile, keyPEM, 0o400},
+	} {
+		if err := writeFileAtomic(filepath.Join(dir, f.name), f.data, f.mode); err != nil {
+			return nil, err
+		}
+	}
+	return certPEM, nil
 }
 
-// NotAfter returns the expiry of the first PEM certificate.
-func NotAfter(certPEM []byte) (time.Time, error) {
-	block, _ := pem.Decode(certPEM)
-	if block == nil || block.Type != pemCertificate {
-		return time.Time{}, errors.New("expected a PEM-encoded CERTIFICATE block")
-	}
-	cert, err := x509.ParseCertificate(block.Bytes)
+func writeFileAtomic(name string, data []byte, mode os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(name), "."+filepath.Base(name)+"-*")
 	if err != nil {
-		return time.Time{}, fmt.Errorf("parsing certificate: %w", err)
+		return err
 	}
-	return cert.NotAfter, nil
+	defer os.Remove(tmp.Name()) //nolint:errcheck // gone after a successful rename
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close() //nolint:errcheck,gosec
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), mode); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), name)
 }

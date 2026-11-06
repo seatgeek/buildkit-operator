@@ -6,7 +6,6 @@ package webhooks
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -174,16 +173,6 @@ var _ = Describe("BuildkitValidator", func() {
 			}
 
 			Expect(c.Create(ctx, buildkit)).To(MatchError(ContainSubstring("spec.clientCA")))
-		})
-
-		It("should reject names too long for the TLS secret", func() {
-			buildkit := &v1alpha1.Buildkit{
-				Name:      strings.Repeat("a", 233),
-				Namespace: namespace,
-				Spec:      v1alpha1.BuildkitSpec{Template: tlsTemplateName, ClientCA: testCA()},
-			}
-
-			Expect(c.Create(ctx, buildkit)).To(MatchError(ContainSubstring("metadata.name")))
 		})
 
 		It("should reject a clientCA outside its validity window", func() {

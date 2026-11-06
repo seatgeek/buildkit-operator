@@ -22,4 +22,7 @@ const (
 	ReasonClientCARequired api.ConditionReason = "ClientCARequired"
 	// ReasonClientCAInvalid means spec.clientCA is not exactly one PEM CA certificate.
 	ReasonClientCAInvalid api.ConditionReason = "ClientCAInvalid"
+	// ReasonTLSNotConfigured means the template requires client TLS but the operator was started without
+	// the image for TLS pods' helper containers.
+	ReasonTLSNotConfigured api.ConditionReason = "TLSNotConfigured"
 )

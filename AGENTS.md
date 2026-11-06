@@ -65,7 +65,7 @@ kubectl --kubeconfig ./kind/kubeconfig [command]
   - `builder.go`: Template construction logic
   - `conditions.go`: Status condition constants
 
-- **internal/tlsutil/**: Server certificate generation and client CA validation for `requireClientTLS`
+- **internal/tlsutil/**: Server certificate generation (used by the `operator gen-cert` init container), server certificate and client CA validation for `requireClientTLS`
 
 - **internal/healthproxy/**: `operator health-proxy` subcommand; the sidecar that answers kubelet gRPC probes from buildkitd's unix socket when its TCP listener requires mutual TLS
 

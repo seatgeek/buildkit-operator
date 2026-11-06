@@ -6,7 +6,6 @@ package buildkit
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -20,15 +19,11 @@ import (
 	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit/resources"
 	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit_template"
 	"github.com/seatgeek/buildkit-operator/internal/merge"
+	"github.com/seatgeek/buildkit-operator/internal/tlsutil"
 )
 
-// SecretClientCAKey is the TLS Secret key holding the Buildkit's client CA.
-const SecretClientCAKey = "ca.crt"
-
-// serverCertMargin is added to a TLS pod's lifetime when issuing its certificate. A pod's deadline
-// counts from when it starts, which can be well after the certificate is issued (scheduling, node
-// scale-up, image pulls); the controller re-checks against the actual start time before advertising.
-const serverCertMargin = time.Hour
+// tlsCertMargin is how much longer than its pod a server certificate stays valid.
+const tlsCertMargin = 30 * time.Minute
 
 // tlsPodDeadline returns the activeDeadlineSeconds a TLS pod runs with.
 func tlsPodDeadline(template *v1alpha1.BuildkitTemplate) int64 {
@@ -38,19 +33,15 @@ func tlsPodDeadline(template *v1alpha1.BuildkitTemplate) int64 {
 	return v1alpha1.DefaultTLSActiveDeadlineSeconds
 }
 
-// tlsPodServingTime is the longest a TLS pod can serve once started: its deadline, then its
-// termination grace period.
-func tlsPodServingTime(template *v1alpha1.BuildkitTemplate) time.Duration {
+// tlsCertValidity is how long a TLS pod's server certificate is valid from when the pod mints it.
+// Minting happens after the pod starts, and the deadline counts from the start, so the certificate
+// outlives the pod's deadline and termination grace period by at least tlsCertMargin.
+func tlsCertValidity(template *v1alpha1.BuildkitTemplate) time.Duration {
 	grace := int64(corev1.DefaultTerminationGracePeriodSeconds)
 	if g := template.Spec.Lifecycle.TerminationGracePeriodSeconds; g != nil {
 		grace = *g
 	}
-	return time.Duration(tlsPodDeadline(template)+grace) * time.Second
-}
-
-// serverCertLifetime is how long a certificate issued for a new TLS pod must last.
-func serverCertLifetime(template *v1alpha1.BuildkitTemplate) time.Duration {
-	return tlsPodServingTime(template) + serverCertMargin
+	return time.Duration(tlsPodDeadline(template)+grace)*time.Second + tlsCertMargin
 }
 
 // tlsCACertFlag makes buildkitd require client certificates signed by the given CA. Its presence in a
@@ -63,20 +54,11 @@ const (
 	socketVolumeName = "buildkitd-socket"
 )
 
-// TLSOptions enables mutual TLS on the buildkitd TCP listener.
-type TLSOptions struct {
-	// SecretName names a Secret in the Buildkit's namespace holding tls.crt, tls.key (the server
-	// certificate) and ca.crt (the client CA). Each server certificate gets its own Secret, so the name
-	// a pod mounts identifies the certificate it was started with.
-	SecretName string
-	// HealthProxyImage runs the health-only sidecar that kubelet gRPC probes talk to.
-	HealthProxyImage string
-}
-
 type Builder struct {
 	buildkit *v1alpha1.Buildkit
 	cl       client.Reader
-	tls      *TLSOptions
+	// tlsImage, when set, enables mutual TLS; it runs the pod's gen-cert and health-proxy containers.
+	tlsImage string
 }
 
 func NewBuilder(buildkit *v1alpha1.Buildkit, cl client.Reader) *Builder {
@@ -87,8 +69,8 @@ func NewBuilder(buildkit *v1alpha1.Buildkit, cl client.Reader) *Builder {
 }
 
 // WithTLS configures the pod for mutual TLS. It is required when the template sets requireClientTLS.
-func (b *Builder) WithTLS(opts *TLSOptions) *Builder {
-	b.tls = opts
+func (b *Builder) WithTLS(image string) *Builder {
+	b.tlsImage = image
 	return b
 }
 
@@ -101,7 +83,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 	}
 
 	// Never fall back to a plaintext listener for a template that requires TLS.
-	if template.Spec.RequireClientTLS && b.tls == nil {
+	if template.Spec.RequireClientTLS && b.tlsImage == "" {
 		return nil, fmt.Errorf("BuildkitTemplate %q requires client TLS but no TLS configuration was provided", template.Name)
 	}
 
@@ -212,7 +194,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 		}
 	}
 
-	if b.tls != nil {
+	if b.tlsImage != "" {
 		if err := b.configureTLS(pod, &template); err != nil {
 			return nil, err
 		}
@@ -307,14 +289,15 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 	return pod, nil
 }
 
-// configureTLS makes buildkitd's TCP listener require client certificates signed by the Buildkit's
-// client CA, and moves kubelet's gRPC probes to a health-only sidecar that reaches buildkitd over its
-// unix socket. It must run after the rootless adjustments, which change the socket path.
-func (b *Builder) configureTLS(pod *corev1.Pod, template *v1alpha1.BuildkitTemplate) error {
-	if b.tls.SecretName == "" || b.tls.HealthProxyImage == "" {
-		return errors.New("TLS requires both a secret name and a health proxy image")
-	}
+// genCertContainerName is the init container that mints the pod's server certificate and reports it
+// in its termination message.
+const genCertContainerName = "gen-cert"
 
+// configureTLS makes buildkitd's TCP listener require client certificates signed by the Buildkit's
+// client CA, using a server certificate the pod mints for itself, and moves kubelet's gRPC probes to a
+// health-only sidecar that reaches buildkitd over its unix socket. It must run after the rootless
+// adjustments, which change the socket path.
+func (b *Builder) configureTLS(pod *corev1.Pod, template *v1alpha1.BuildkitTemplate) error {
 	container := &pod.Spec.Containers[0]
 
 	socketPath, ok := strings.CutPrefix(container.Args[1], "unix://")
@@ -323,22 +306,19 @@ func (b *Builder) configureTLS(pod *corev1.Pod, template *v1alpha1.BuildkitTempl
 	}
 	socketDir := path.Dir(socketPath)
 
-	// The socket is owned by buildkitd's group with mode 0660, so the sidecar joins that group
-	// instead of running as buildkitd's user.
-	socketGID := int64(0)
+	// buildkitd's group owns its socket (mode 0660), so the sidecar joins that group instead of running
+	// as buildkitd's user. Rootless buildkitd runs as 1000 and must own its key file; rootful buildkitd
+	// is root and can read any file.
+	helperUID, helperGID := int64(65532), int64(0)
 	if template.Spec.Rootless {
-		socketGID = 1000
+		helperUID, helperGID = 1000, 1000
 	}
 
 	pod.Spec.Volumes = append(pod.Spec.Volumes,
 		corev1.Volume{
 			Name: tlsVolumeName,
-			Secret: &corev1.SecretVolumeSource{
-				SecretName: b.tls.SecretName,
-				// buildkitd may run as a non-root user (1000 when rootless) that does not own the
-				// projected files. Only the buildkit container mounts this volume.
-				DefaultMode: new(int32(0o444)),
-			},
+			// The private key lives only in memory, for the pod's lifetime.
+			EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory},
 		},
 		corev1.Volume{
 			Name:     socketVolumeName,
@@ -351,36 +331,56 @@ func (b *Builder) configureTLS(pod *corev1.Pod, template *v1alpha1.BuildkitTempl
 		corev1.VolumeMount{Name: socketVolumeName, MountPath: socketDir},
 	)
 
-	// The server certificate is issued to outlive the pod, so the pod must have a deadline.
+	// The server certificate is minted to outlive the pod, so the pod must have a deadline.
 	pod.Spec.ActiveDeadlineSeconds = new(tlsPodDeadline(template))
 
 	container.Args = append(container.Args,
-		"--tlscert", path.Join(tlsMountPath, corev1.TLSCertKey),
-		"--tlskey", path.Join(tlsMountPath, corev1.TLSPrivateKeyKey),
-		tlsCACertFlag, path.Join(tlsMountPath, SecretClientCAKey),
+		"--tlscert", path.Join(tlsMountPath, tlsutil.CertFile),
+		"--tlskey", path.Join(tlsMountPath, tlsutil.KeyFile),
+		tlsCACertFlag, path.Join(tlsMountPath, tlsutil.ClientCAFile),
 	)
 
 	for _, probe := range []*corev1.Probe{container.StartupProbe, container.ReadinessProbe, container.LivenessProbe} {
 		probe.GRPC.Port = template.Spec.HealthPort
 	}
 
-	pod.Spec.InitContainers = append(pod.Spec.InitContainers, corev1.Container{
-		Name:            "health-proxy",
-		Image:           b.tls.HealthProxyImage,
+	genCert := b.tlsHelperContainer(genCertContainerName, helperUID, helperGID)
+	genCert.Command = []string{
+		"/operator", "gen-cert",
+		"--dir", tlsMountPath,
+		"--server-name", b.buildkit.Name,
+		"--valid-for", tlsCertValidity(template).String(),
+	}
+	genCert.Env = []corev1.EnvVar{{Name: "CLIENT_CA", Value: b.buildkit.Spec.ClientCA}}
+	// The controller reads the certificate from this message; never let container logs stand in for it.
+	genCert.TerminationMessagePath = corev1.TerminationMessagePathDefault
+	genCert.TerminationMessagePolicy = corev1.TerminationMessageReadFile
+	genCert.VolumeMounts = []corev1.VolumeMount{{Name: tlsVolumeName, MountPath: tlsMountPath}}
+
+	healthProxy := b.tlsHelperContainer("health-proxy", 65532, helperGID)
+	healthProxy.Command = []string{
+		"/operator", "health-proxy",
+		"--listen", fmt.Sprintf(":%d", template.Spec.HealthPort),
+		"--socket", socketPath,
+	}
+	// Native sidecar: starts after gen-cert, before buildkit, and runs for the pod's lifetime.
+	healthProxy.RestartPolicy = new(corev1.ContainerRestartPolicyAlways)
+	healthProxy.Ports = []corev1.ContainerPort{
+		{Name: "health", ContainerPort: template.Spec.HealthPort, Protocol: corev1.ProtocolTCP},
+	}
+	healthProxy.VolumeMounts = []corev1.VolumeMount{{Name: socketVolumeName, MountPath: socketDir}}
+
+	pod.Spec.InitContainers = append(pod.Spec.InitContainers, genCert, healthProxy)
+
+	return nil
+}
+
+// tlsHelperContainer returns the hardened base of the small operator-image containers in a TLS pod.
+func (b *Builder) tlsHelperContainer(name string, uid, gid int64) corev1.Container {
+	return corev1.Container{
+		Name:            name,
+		Image:           b.tlsImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
-		Command: []string{
-			"/operator", "health-proxy",
-			"--listen", fmt.Sprintf(":%d", template.Spec.HealthPort),
-			"--socket", socketPath,
-		},
-		// Native sidecar: starts before buildkit and runs for the pod's lifetime.
-		RestartPolicy: new(corev1.ContainerRestartPolicyAlways),
-		Ports: []corev1.ContainerPort{
-			{Name: "health", ContainerPort: template.Spec.HealthPort, Protocol: corev1.ProtocolTCP},
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{Name: socketVolumeName, MountPath: socketDir},
-		},
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("10m"),
@@ -391,26 +391,13 @@ func (b *Builder) configureTLS(pod *corev1.Pod, template *v1alpha1.BuildkitTempl
 			},
 		},
 		SecurityContext: &corev1.SecurityContext{
-			RunAsUser:                new(int64(65532)),
-			RunAsGroup:               new(socketGID),
+			RunAsUser:                new(uid),
+			RunAsGroup:               new(gid),
 			RunAsNonRoot:             new(true),
 			ReadOnlyRootFilesystem:   new(true),
 			AllowPrivilegeEscalation: new(false),
 			Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 			SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 		},
-	})
-
-	return nil
-}
-
-// podTLSSecretName returns the Secret a pod's buildkitd TLS volume mounts, or "" if it has none. It
-// reads the pod spec, which only the operator sets, never metadata a Buildkit's creator can supply.
-func podTLSSecretName(pod *corev1.Pod) string {
-	for _, v := range pod.Spec.Volumes {
-		if v.Name == tlsVolumeName && v.Secret != nil {
-			return v.Secret.SecretName
-		}
 	}
-	return ""
 }

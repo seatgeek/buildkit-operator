@@ -31,20 +31,15 @@ import (
 	"github.com/seatgeek/buildkit-operator/internal/test"
 )
 
-// Namespaces the TLS tests run in; the controller only manages TLS secrets in these. Envtest never
-// finishes deleting namespaces, so each is used by a single test.
+// Namespaces the TLS tests run in. Envtest never finishes deleting namespaces, so each is used by a
+// single test.
 const (
-	tlsNamespace            = "tls-test"
-	tlsFlipNamespace        = "tls-flip-test"
-	tlsSecretNamespace      = "tls-secret-test"
-	tlsOffNamespace         = "tls-off-test"
-	tlsTerminatingNamespace = "tls-terminating-test"
-	tlsBadCANamespace       = "tls-bad-ca-test"
-	tlsDrainNamespace       = "tls-drain-test"
-	tlsRecreateNamespace    = "tls-recreate-test"
-	tlsLifetimeNamespace    = "tls-lifetime-test"
-	// Deliberately left out of the controller's TLS namespaces.
-	tlsUnconfiguredNamespace = "tls-unconfigured-test"
+	tlsNamespace      = "tls-test"
+	tlsFlipNamespace  = "tls-flip-test"
+	tlsCertNamespace  = "tls-cert-test"
+	tlsOffNamespace   = "tls-off-test"
+	tlsBadCANamespace = "tls-bad-ca-test"
+	tlsDrainNamespace = "tls-drain-test"
 )
 
 var (
@@ -89,17 +84,7 @@ var _ = BeforeSuite(func() {
 					Metrics: metrics.MustMakeMetrics(scheme, prometheus.NewRegistry()),
 				}
 
-				secretClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme(), Mapper: mgr.GetRESTMapper()})
-				if err != nil {
-					return err
-				}
-				tlsConfig := buildkit.TLSConfig{
-					SecretClient:     secretClient,
-					Namespaces:       []string{tlsNamespace, tlsFlipNamespace, tlsSecretNamespace, tlsOffNamespace, tlsTerminatingNamespace, tlsBadCANamespace, tlsDrainNamespace, tlsRecreateNamespace, tlsLifetimeNamespace},
-					HealthProxyImage: "buildkit-operator:test",
-				}
-
-				return buildkit.SetupController(ctx, cpCtx, mgr, rl, clientApplicator, tlsConfig)
+				return buildkit.SetupController(ctx, cpCtx, mgr, rl, clientApplicator, "buildkit-operator:test")
 			},
 		).
 		Start()

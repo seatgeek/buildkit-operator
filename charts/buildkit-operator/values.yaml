@@ -129,12 +129,9 @@ operator:
 
 # Mutual TLS for BuildkitTemplates that set requireClientTLS
 clientTLS:
-  # Namespaces where such templates are used. The operator gets get/create/delete on Secrets in each, via a
-  # namespace-scoped Role, to store every Buildkit's server certificate. With none listed, Buildkits
-  # using those templates never start.
-  namespaces: []
-  # Image for the health-proxy sidecar. Defaults to the operator image, which contains it. Buildkit pods
-  # pull it with their template's service account, not with imagePullSecrets above.
+  # Image for TLS pods' gen-cert init container and health-proxy sidecar. Defaults to the operator image,
+  # which contains both. Buildkit pods pull it with their template's service account, not with
+  # imagePullSecrets above.
   healthProxyImage: ""
 
 # RBAC configuration

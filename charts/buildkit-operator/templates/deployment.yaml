@@ -51,9 +51,6 @@ spec:
         - --leader-election-id={{ include "buildkit-operator.fullname" . }}-election
         {{- end }}
         - --dev-logging=false
-        {{- with .Values.clientTLS.namespaces }}
-        - --tls-secret-namespaces={{ join "," . }}
-        {{- end }}
         - --health-proxy-image={{ .Values.clientTLS.healthProxyImage | default (include "buildkit-operator.image" .) }}
         command:
         - /operator

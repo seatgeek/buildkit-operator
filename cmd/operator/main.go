@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/reddit/achilles-sdk/pkg/bootstrap"
 	"github.com/reddit/achilles-sdk/pkg/fsm/metrics"
@@ -18,7 +19,6 @@ import (
 	"github.com/reddit/achilles-sdk/pkg/meta"
 	"github.com/reddit/achilles-sdk/pkg/ratelimiter"
 	"github.com/spf13/cobra"
-	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	crtMetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
@@ -27,6 +27,7 @@ import (
 	"github.com/seatgeek/buildkit-operator/internal/controlplane"
 	"github.com/seatgeek/buildkit-operator/internal/healthproxy"
 	intscheme "github.com/seatgeek/buildkit-operator/internal/scheme"
+	"github.com/seatgeek/buildkit-operator/internal/tlsutil"
 	"github.com/seatgeek/buildkit-operator/internal/webhooks"
 )
 
@@ -36,8 +37,7 @@ import (
 type opts struct {
 	bootstrap bootstrap.Options
 
-	tlsSecretNamespaces []string
-	healthProxyImage    string
+	healthProxyImage string
 }
 
 const (
@@ -71,10 +71,9 @@ func rootCommand(ctx context.Context) *cobra.Command {
 	}
 
 	o.bootstrap.AddToFlags(cmd.Flags())
-	cmd.Flags().StringSliceVar(&o.tlsSecretNamespaces, "tls-secret-namespaces", nil, "Namespaces where the operator may create TLS secrets for BuildkitTemplates that set requireClientTLS")
-	cmd.Flags().StringVar(&o.healthProxyImage, "health-proxy-image", "", "Image for the health-proxy sidecar used with requireClientTLS; normally the operator's own image")
+	cmd.Flags().StringVar(&o.healthProxyImage, "health-proxy-image", "", "Image for the gen-cert and health-proxy containers of pods whose template sets requireClientTLS; normally the operator's own image")
 
-	cmd.AddCommand(healthProxyCommand(ctx))
+	cmd.AddCommand(healthProxyCommand(ctx), genCertCommand())
 
 	return cmd
 }
@@ -97,6 +96,36 @@ func healthProxyCommand(ctx context.Context) *cobra.Command {
 	cmd.Flags().StringVar(&listen, "listen", ":1235", "TCP address to serve health checks on")
 	cmd.Flags().StringVar(&socket, "socket", "", "Absolute path of buildkitd's unix socket")
 	_ = cmd.MarkFlagRequired("socket")
+
+	return cmd
+}
+
+// genCertCommand mints the server certificate of a Buildkit pod that requires client TLS. It runs as an
+// init container and reports the certificate in its termination message, which kubelet copies into
+// the pod's status for the operator to publish.
+func genCertCommand() *cobra.Command {
+	var dir, serverName, messagePath string
+	var validFor time.Duration
+
+	cmd := &cobra.Command{
+		Use:   "gen-cert",
+		Short: "Write a new buildkitd server key and certificate, and the client CA from $CLIENT_CA",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			certPEM, err := tlsutil.WriteServerFiles(dir, serverName, os.Getenv("CLIENT_CA"), validFor, time.Now())
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(messagePath, certPEM, 0o644) //nolint:gosec // kubelet's termination-message file; the certificate is public
+		},
+	}
+
+	cmd.Flags().StringVar(&dir, "dir", "", "Directory to write tls.crt, tls.key and ca.crt to")
+	cmd.Flags().StringVar(&serverName, "server-name", "", "Name the certificate is valid for")
+	cmd.Flags().DurationVar(&validFor, "valid-for", 0, "How long the certificate is valid")
+	cmd.Flags().StringVar(&messagePath, "termination-message-path", "/dev/termination-log", "File to report the certificate in")
+	for _, f := range []string{"dir", "server-name", "valid-for"} {
+		_ = cmd.MarkFlagRequired(f)
+	}
 
 	return cmd
 }
@@ -127,20 +156,8 @@ func initStartFunc(o *opts) bootstrap.StartFunc {
 
 		log.Info("starting controllers...")
 
-		// Uncached so the operator never lists or caches Secrets; its RBAC only allows get/create in
-		// the TLS namespaces.
-		secretClient, err := crclient.New(mgr.GetConfig(), crclient.Options{Scheme: mgr.GetScheme(), Mapper: mgr.GetRESTMapper()})
-		if err != nil {
-			return fmt.Errorf("creating secret client: %w", err)
-		}
-		tlsConfig := buildkit.TLSConfig{
-			SecretClient:     secretClient,
-			Namespaces:       o.tlsSecretNamespaces,
-			HealthProxyImage: o.healthProxyImage,
-		}
-
 		rl := ratelimiter.NewDefaultProviderRateLimiter(5)
-		if err := buildkit.SetupController(ctx, cpCtx, mgr, rl, client, tlsConfig); err != nil {
+		if err := buildkit.SetupController(ctx, cpCtx, mgr, rl, client, o.healthProxyImage); err != nil {
 			return fmt.Errorf("failed to setup Buildkit controller: %w", err)
 		}
 		if err := buildkit_template.SetupController(ctx, cpCtx, mgr, rl, client); err != nil {
