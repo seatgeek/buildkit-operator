@@ -433,6 +433,14 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 			g.Expect(updated.Status.ServerCA).NotTo(BeEmpty())
 		}, "2s").Should(Succeed())
 
+		By("following the running TLS pod's new certificate after its sandbox restarts")
+		restarted := markPodReady(client.ObjectKeyFromObject(&tlsPod))
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.ServerCA).To(Equal(restarted))
+		}).Should(Succeed())
+
 		By("clearing it once the replacement pod is plaintext")
 		Expect(c.Delete(ctx, &tlsPod)).To(Succeed())
 		Eventually(func(g Gomega) {

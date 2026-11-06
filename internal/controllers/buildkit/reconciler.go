@@ -110,9 +110,13 @@ func (r *reconciler) runBuildkit() *state {
 				}
 			}
 
+			// Whether the running pod serves TLS, which can differ from what the template now requires
+			// (requireClientTLS turned off leaves a TLS pod running until it is replaced).
+			podTLS := len(podsWithoutTLS([]corev1.Pod{*pod})) == 0
+
 			// A terminating TLS pod may still look ready, or be held by a finalizer; stop advertising it
 			// rather than let clients connect to an instance on its way out.
-			if requireTLS && pod.DeletionTimestamp != nil {
+			if podTLS && pod.DeletionTimestamp != nil {
 				if err := r.clearConnectionStatus(ctx, obj); err != nil {
 					return nil, types.ErrorResult(err)
 				}
@@ -159,7 +163,7 @@ func (r *reconciler) runBuildkit() *state {
 				return nil, types.ErrorResult(fmt.Errorf("buildkit pod %s does not have containers with ports defined", pod.Name))
 			}
 
-			if requireTLS {
+			if podTLS {
 				cert, err := podServerCert(pod, obj.Name)
 				if err != nil {
 					log.Errorw("Buildkit pod reported no usable server certificate", "pod", pod.Name, "error", err)
@@ -171,7 +175,7 @@ func (r *reconciler) runBuildkit() *state {
 
 			obj.Status.Endpoint = fmt.Sprintf("tcp://%s", net.JoinHostPort(pod.Status.PodIP, strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort))))
 
-			if requireTLS {
+			if podTLS {
 				return nil, r.recheckAtClientCAExpiry(obj)
 			}
 			return nil, types.DoneResult()
