@@ -143,6 +143,13 @@ func TestSetConnectionStatus(t *testing.T) {
 	require.NoError(t, r.setConnectionStatus(t.Context(), obj, nil))
 	assert.Empty(t, stored().Endpoint)
 	assert.Empty(t, obj.Status.Endpoint, "the in-memory object follows, so the FSM's own write doesn't restore it")
+
+	// A cached object can lag the last write; the server is cleared even when obj already looks clear.
+	require.NoError(t, r.setConnectionStatus(t.Context(), obj, &connection{endpoint: "tcp://10.0.0.3:1234"}))
+	stale := obj.DeepCopy()
+	stale.Status.Endpoint = ""
+	require.NoError(t, r.setConnectionStatus(t.Context(), stale, nil))
+	assert.Empty(t, stored().Endpoint)
 }
 
 func TestPodServerCert(t *testing.T) {

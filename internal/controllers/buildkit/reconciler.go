@@ -258,9 +258,8 @@ func (r *reconciler) setConnectionStatus(ctx context.Context, obj *v1alpha1.Buil
 	if conn != nil {
 		want = *conn
 	}
-	if obj.Status.Endpoint == want.endpoint && obj.Status.ServerCA == want.serverCA && obj.Status.ServerName == want.serverName {
-		return nil
-	}
+	// Always patched: obj may come from a cache that hasn't caught up with the last write, so it can't
+	// tell whether anything changed. A patch that changes nothing triggers no watch event.
 
 	orNull := func(v string) any {
 		if v == "" {
