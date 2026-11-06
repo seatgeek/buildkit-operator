@@ -24,11 +24,12 @@ func TestBuilder_BuildPod(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		buildkit *v1alpha1.Buildkit
-		template *v1alpha1.BuildkitTemplate
-		tlsImage string
-		wantErr  string
+		name          string
+		buildkit      *v1alpha1.Buildkit
+		template      *v1alpha1.BuildkitTemplate
+		tlsImage      string
+		tlsPullPolicy corev1.PullPolicy
+		wantErr       string
 	}{
 		{
 			name: "template not found",
@@ -337,7 +338,8 @@ func TestBuilder_BuildPod(t *testing.T) {
 					RequireClientTLS: true,
 				},
 			},
-			tlsImage: "ghcr.io/seatgeek/buildkit-operator:test",
+			tlsImage:      "ghcr.io/seatgeek/buildkit-operator:test",
+			tlsPullPolicy: corev1.PullAlways,
 		},
 		{
 			name: "client TLS rootless",
@@ -419,7 +421,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 			}
 			client := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objects...).Build()
 
-			builder := NewBuilder(tt.buildkit, client).WithTLS(tt.tlsImage)
+			builder := NewBuilder(tt.buildkit, client).WithTLS(TLSHelpers{Image: tt.tlsImage, PullPolicy: tt.tlsPullPolicy})
 			pod, err := builder.BuildPod(t.Context())
 
 			if tt.wantErr != "" {
@@ -443,7 +445,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 func TestBuilder_configureTLS_requiresUnixSocket(t *testing.T) {
 	t.Parallel()
 
-	b := NewBuilder(&v1alpha1.Buildkit{}, nil).WithTLS("img")
+	b := NewBuilder(&v1alpha1.Buildkit{}, nil).WithTLS(TLSHelpers{Image: "img"})
 	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{
 		Args: []string{"--addr", "tcp://0.0.0.0:9999"},
 	}}}}

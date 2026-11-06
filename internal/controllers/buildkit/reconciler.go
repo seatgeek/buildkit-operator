@@ -48,12 +48,11 @@ const reasonApplyingChanges = "ApplyingChanges"
 type state = types.State[*v1alpha1.Buildkit]
 
 type reconciler struct {
-	c      *io.ClientApplicator
-	scheme *runtime.Scheme
-	log    *zap.SugaredLogger
-	// healthProxyImage runs the gen-cert and health-proxy containers of TLS pods.
-	healthProxyImage string
-	now              func() time.Time
+	c          *io.ClientApplicator
+	scheme     *runtime.Scheme
+	log        *zap.SugaredLogger
+	tlsHelpers TLSHelpers
+	now        func() time.Time
 }
 
 func (r *reconciler) runBuildkit() *state {
@@ -232,7 +231,7 @@ func (r *reconciler) ensureExactlyOnePod(ctx context.Context, obj *v1alpha1.Buil
 		// No pod running yet, so create one
 		builder := NewBuilder(obj, r.c.Client)
 		if requireTLS {
-			builder.WithTLS(r.healthProxyImage)
+			builder.WithTLS(r.tlsHelpers)
 		}
 		pod, err := builder.BuildPod(ctx)
 		if err != nil {
@@ -288,7 +287,7 @@ func (r *reconciler) setConnectionStatus(ctx context.Context, obj *v1alpha1.Buil
 func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, managedPods []corev1.Pod, out *types.OutputSet, log *zap.SugaredLogger) (*types.Result, error) {
 	// Checked before anything is deleted: an operator that can't start TLS pods must leave running
 	// ones alone.
-	if r.healthProxyImage == "" {
+	if r.tlsHelpers.Image == "" {
 		return &types.Result{
 			Done: true,
 			CustomStatusCondition: &types.ResultStatusCondition{
@@ -485,7 +484,7 @@ func SetupController(
 	mgr ctrl.Manager,
 	rl workqueue.TypedRateLimiter[reconcile.Request],
 	c *io.ClientApplicator,
-	healthProxyImage string,
+	tlsHelpers TLSHelpers,
 ) error {
 	_, log, err := logging.ControllerCtx(ctx, controllerName)
 	if err != nil {
@@ -493,11 +492,11 @@ func SetupController(
 	}
 
 	r := &reconciler{
-		c:                c,
-		scheme:           mgr.GetScheme(),
-		log:              log,
-		healthProxyImage: healthProxyImage,
-		now:              time.Now,
+		c:          c,
+		scheme:     mgr.GetScheme(),
+		log:        log,
+		tlsHelpers: tlsHelpers,
+		now:        time.Now,
 	}
 
 	builder := fsm.NewBuilder(

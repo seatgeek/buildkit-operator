@@ -57,8 +57,8 @@ const (
 type Builder struct {
 	buildkit *v1alpha1.Buildkit
 	cl       client.Reader
-	// tlsImage, when set, enables mutual TLS; it runs the pod's gen-cert and health-proxy containers.
-	tlsImage string
+	// tls, when its image is set, enables mutual TLS.
+	tls TLSHelpers
 }
 
 func NewBuilder(buildkit *v1alpha1.Buildkit, cl client.Reader) *Builder {
@@ -68,9 +68,17 @@ func NewBuilder(buildkit *v1alpha1.Buildkit, cl client.Reader) *Builder {
 	}
 }
 
+// TLSHelpers is the image the gen-cert and health-proxy containers of TLS pods run, and how it is
+// pulled. Both come from the operator's configuration, not the template.
+type TLSHelpers struct {
+	Image string
+	// PullPolicy is empty for Kubernetes' default.
+	PullPolicy corev1.PullPolicy
+}
+
 // WithTLS configures the pod for mutual TLS. It is required when the template sets requireClientTLS.
-func (b *Builder) WithTLS(image string) *Builder {
-	b.tlsImage = image
+func (b *Builder) WithTLS(helpers TLSHelpers) *Builder {
+	b.tls = helpers
 	return b
 }
 
@@ -83,7 +91,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 	}
 
 	// Never fall back to a plaintext listener for a template that requires TLS.
-	if template.Spec.RequireClientTLS && b.tlsImage == "" {
+	if template.Spec.RequireClientTLS && b.tls.Image == "" {
 		return nil, fmt.Errorf("BuildkitTemplate %q requires client TLS but no TLS configuration was provided", template.Name)
 	}
 
@@ -194,7 +202,7 @@ func (b *Builder) BuildPod(ctx context.Context) (*corev1.Pod, error) {
 		}
 	}
 
-	if b.tlsImage != "" {
+	if b.tls.Image != "" {
 		if err := b.configureTLS(pod, &template); err != nil {
 			return nil, err
 		}
@@ -379,8 +387,8 @@ func (b *Builder) configureTLS(pod *corev1.Pod, template *v1alpha1.BuildkitTempl
 func (b *Builder) tlsHelperContainer(name string, uid, gid int64) corev1.Container {
 	return corev1.Container{
 		Name:            name,
-		Image:           b.tlsImage,
-		ImagePullPolicy: corev1.PullIfNotPresent,
+		Image:           b.tls.Image,
+		ImagePullPolicy: b.tls.PullPolicy,
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("10m"),

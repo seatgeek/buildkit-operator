@@ -38,7 +38,8 @@ import (
 type opts struct {
 	bootstrap bootstrap.Options
 
-	healthProxyImage string
+	healthProxyImage           string
+	healthProxyImagePullPolicy string
 }
 
 const (
@@ -64,6 +65,13 @@ func rootCommand(ctx context.Context) *cobra.Command {
 		Use:     "buildkit-operator",
 		Version: Version,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Checked up front: the API server would reject every TLS pod using a bad policy, after the
+			// controller had already removed the plaintext pods they replace.
+			switch corev1.PullPolicy(o.healthProxyImagePullPolicy) {
+			case "", corev1.PullAlways, corev1.PullIfNotPresent, corev1.PullNever:
+			default:
+				return fmt.Errorf("invalid --health-proxy-image-pull-policy %q", o.healthProxyImagePullPolicy)
+			}
 			return bootstrap.Start(ctx,
 				intscheme.AddToSchemes,
 				&o.bootstrap,
@@ -72,6 +80,7 @@ func rootCommand(ctx context.Context) *cobra.Command {
 	}
 
 	o.bootstrap.AddToFlags(cmd.Flags())
+	cmd.Flags().StringVar(&o.healthProxyImagePullPolicy, "health-proxy-image-pull-policy", "", "Pull policy for --health-proxy-image (Always, IfNotPresent or Never); empty for Kubernetes' default")
 	cmd.Flags().StringVar(&o.healthProxyImage, "health-proxy-image", "", "Image for the gen-cert and health-proxy containers of pods whose template sets requireClientTLS; normally the operator's own image")
 
 	cmd.AddCommand(healthProxyCommand(ctx), genCertCommand())
@@ -157,7 +166,7 @@ func initStartFunc(o *opts) bootstrap.StartFunc {
 		log.Info("starting controllers...")
 
 		rl := ratelimiter.NewDefaultProviderRateLimiter(5)
-		if err := buildkit.SetupController(ctx, cpCtx, mgr, rl, client, o.healthProxyImage); err != nil {
+		if err := buildkit.SetupController(ctx, cpCtx, mgr, rl, client, buildkit.TLSHelpers{Image: o.healthProxyImage, PullPolicy: corev1.PullPolicy(o.healthProxyImagePullPolicy)}); err != nil {
 			return fmt.Errorf("failed to setup Buildkit controller: %w", err)
 		}
 		if err := buildkit_template.SetupController(ctx, cpCtx, mgr, rl, client); err != nil {

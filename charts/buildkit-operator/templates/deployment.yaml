@@ -52,6 +52,7 @@ spec:
         {{- end }}
         - --dev-logging=false
         - --health-proxy-image={{ .Values.clientTLS.healthProxyImage | default (include "buildkit-operator.image" .) }}
+        - --health-proxy-image-pull-policy={{ .Values.image.pullPolicy }}
         command:
         - /operator
         {{- with .Values.operator.env }}

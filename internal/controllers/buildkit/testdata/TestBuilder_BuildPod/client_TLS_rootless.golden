@@ -73,7 +73,6 @@ spec:
     - name: CLIENT_CA
       value: test-client-ca-pem
     image: ghcr.io/seatgeek/buildkit-operator:test
-    imagePullPolicy: IfNotPresent
     name: gen-cert
     resources:
       limits:
@@ -105,7 +104,6 @@ spec:
     - --socket
     - /run/user/1000/buildkit/buildkitd.sock
     image: ghcr.io/seatgeek/buildkit-operator:test
-    imagePullPolicy: IfNotPresent
     name: health-proxy
     ports:
     - containerPort: 1235

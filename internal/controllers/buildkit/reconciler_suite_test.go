@@ -86,7 +86,7 @@ var _ = BeforeSuite(func() {
 					Metrics: metrics.MustMakeMetrics(scheme, prometheus.NewRegistry()),
 				}
 
-				return buildkit.SetupController(ctx, cpCtx, mgr, rl, clientApplicator, "buildkit-operator:test")
+				return buildkit.SetupController(ctx, cpCtx, mgr, rl, clientApplicator, buildkit.TLSHelpers{Image: "buildkit-operator:test"})
 			},
 		).
 		Start()
