@@ -8,6 +8,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/reddit/achilles-sdk/pkg/bootstrap"
 	"github.com/reddit/achilles-sdk/pkg/fsm/metrics"
@@ -16,13 +19,16 @@ import (
 	"github.com/reddit/achilles-sdk/pkg/meta"
 	"github.com/reddit/achilles-sdk/pkg/ratelimiter"
 	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	crtMetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit"
 	"github.com/seatgeek/buildkit-operator/internal/controllers/buildkit_template"
 	"github.com/seatgeek/buildkit-operator/internal/controlplane"
+	"github.com/seatgeek/buildkit-operator/internal/healthproxy"
 	intscheme "github.com/seatgeek/buildkit-operator/internal/scheme"
+	"github.com/seatgeek/buildkit-operator/internal/tlsutil"
 	"github.com/seatgeek/buildkit-operator/internal/webhooks"
 )
 
@@ -31,6 +37,9 @@ import (
 // environment variables.
 type opts struct {
 	bootstrap bootstrap.Options
+
+	healthProxyImage           string
+	healthProxyImagePullPolicy string
 }
 
 const (
@@ -56,6 +65,13 @@ func rootCommand(ctx context.Context) *cobra.Command {
 		Use:     "buildkit-operator",
 		Version: Version,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Checked up front: the API server would reject every TLS pod using a bad policy, after the
+			// controller had already removed the plaintext pods they replace.
+			switch corev1.PullPolicy(o.healthProxyImagePullPolicy) {
+			case "", corev1.PullAlways, corev1.PullIfNotPresent, corev1.PullNever:
+			default:
+				return fmt.Errorf("invalid --health-proxy-image-pull-policy %q", o.healthProxyImagePullPolicy)
+			}
 			return bootstrap.Start(ctx,
 				intscheme.AddToSchemes,
 				&o.bootstrap,
@@ -64,6 +80,61 @@ func rootCommand(ctx context.Context) *cobra.Command {
 	}
 
 	o.bootstrap.AddToFlags(cmd.Flags())
+	cmd.Flags().StringVar(&o.healthProxyImagePullPolicy, "health-proxy-image-pull-policy", "", "Pull policy for --health-proxy-image (Always, IfNotPresent or Never); empty for Kubernetes' default")
+	cmd.Flags().StringVar(&o.healthProxyImage, "health-proxy-image", "", "Image for the gen-cert and health-proxy containers of pods whose template sets requireClientTLS; normally the operator's own image")
+
+	cmd.AddCommand(healthProxyCommand(ctx), genCertCommand())
+
+	return cmd
+}
+
+// healthProxyCommand runs the health-only sidecar injected into Buildkit pods that require client TLS.
+func healthProxyCommand(ctx context.Context) *cobra.Command {
+	var listen, socket string
+
+	cmd := &cobra.Command{
+		Use:   "health-proxy",
+		Short: "Serve grpc.health.v1 in plaintext by forwarding to buildkitd's unix socket",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+			defer stop()
+
+			return healthproxy.Run(ctx, listen, socket)
+		},
+	}
+
+	cmd.Flags().StringVar(&listen, "listen", ":1235", "TCP address to serve health checks on")
+	cmd.Flags().StringVar(&socket, "socket", "", "Absolute path of buildkitd's unix socket")
+	_ = cmd.MarkFlagRequired("socket")
+
+	return cmd
+}
+
+// genCertCommand mints the server certificate of a Buildkit pod that requires client TLS. It runs as an
+// init container and reports the certificate in its termination message, which kubelet copies into
+// the pod's status for the operator to publish.
+func genCertCommand() *cobra.Command {
+	var dir, serverName string
+	var validFor time.Duration
+
+	cmd := &cobra.Command{
+		Use:   "gen-cert",
+		Short: "Write a new buildkitd server key and certificate, and the client CA from $CLIENT_CA",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			certPEM, err := tlsutil.WriteServerFiles(dir, serverName, os.Getenv("CLIENT_CA"), validFor, time.Now())
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(corev1.TerminationMessagePathDefault, certPEM, 0o644) //nolint:gosec // kubelet's termination-message file; the certificate is public
+		},
+	}
+
+	cmd.Flags().StringVar(&dir, "dir", "", "Directory to write tls.crt, tls.key and ca.crt to")
+	cmd.Flags().StringVar(&serverName, "server-name", "", "Name the certificate is valid for")
+	cmd.Flags().DurationVar(&validFor, "valid-for", 0, "How long the certificate is valid")
+	for _, f := range []string{"dir", "server-name", "valid-for"} {
+		_ = cmd.MarkFlagRequired(f)
+	}
 
 	return cmd
 }
@@ -95,7 +166,7 @@ func initStartFunc(o *opts) bootstrap.StartFunc {
 		log.Info("starting controllers...")
 
 		rl := ratelimiter.NewDefaultProviderRateLimiter(5)
-		if err := buildkit.SetupController(ctx, cpCtx, mgr, rl, client); err != nil {
+		if err := buildkit.SetupController(ctx, cpCtx, mgr, rl, client, buildkit.TLSHelpers{Image: o.healthProxyImage, PullPolicy: corev1.PullPolicy(o.healthProxyImagePullPolicy)}); err != nil {
 			return fmt.Errorf("failed to setup Buildkit controller: %w", err)
 		}
 		if err := buildkit_template.SetupController(ctx, cpCtx, mgr, rl, client); err != nil {

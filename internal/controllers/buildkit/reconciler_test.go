@@ -88,6 +88,11 @@ var _ = Describe("Buildkit Reconciler", func() {
 		}).Should(Succeed())
 
 		By("verifying buildkit is not yet ready")
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkit), &updated)).To(Succeed())
+			g.Expect(updated.GetCondition(v1alpha1.TypeDeployed).Status).To(Equal(corev1.ConditionFalse))
+		}).Should(Succeed())
 		Consistently(func(g Gomega) {
 			var updated v1alpha1.Buildkit
 			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkit), &updated)).To(Succeed())

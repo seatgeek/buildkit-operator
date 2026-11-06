@@ -61,6 +61,66 @@ missing closing bracket`,
 			Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
 		})
 
+		It("should reject a health port equal to the buildkit port when client TLS is required", func() {
+			buildkitTemplate := &v1alpha1.BuildkitTemplate{
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:             1234,
+					HealthPort:       1234,
+					RequireClientTLS: true,
+				},
+			}
+
+			Expect(c.Create(ctx, buildkitTemplate)).To(MatchError(ContainSubstring("spec.healthPort must differ from spec.port")))
+		})
+
+		It("should reject an out-of-range health port when client TLS is required", func() {
+			buildkitTemplate := &v1alpha1.BuildkitTemplate{
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:             1234,
+					HealthPort:       70000,
+					RequireClientTLS: true,
+				},
+			}
+
+			Expect(c.Create(ctx, buildkitTemplate)).To(MatchError(ContainSubstring("spec.healthPort must be between 1 and 65535")))
+		})
+
+		It("should cap the pod deadline when client TLS is required", func() {
+			tooLong := v1alpha1.MaxTLSActiveDeadlineSeconds + 1
+			buildkitTemplate := &v1alpha1.BuildkitTemplate{
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					RequireClientTLS: true,
+					Lifecycle:        v1alpha1.BuildkitTemplatePodLifecycle{ActiveDeadlineSeconds: &tooLong},
+				},
+			}
+			Expect(c.Create(ctx, buildkitTemplate)).To(MatchError(ContainSubstring("spec.lifecycle.activeDeadlineSeconds")))
+
+			maxDeadline := v1alpha1.MaxTLSActiveDeadlineSeconds
+			buildkitTemplate.Spec.Lifecycle.ActiveDeadlineSeconds = &maxDeadline
+			Expect(c.Create(ctx, buildkitTemplate)).To(Succeed())
+		})
+
+		It("should reject a [grpc] socket owner override when client TLS is required", func() {
+			buildkitTemplate := &v1alpha1.BuildkitTemplate{
+				Name:      "test-buildkit-template",
+				Namespace: namespace,
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					RequireClientTLS: true,
+					BuildkitdToml:    "[grpc]\n  gid = 2000\n",
+				},
+			}
+			Expect(c.Create(ctx, buildkitTemplate)).To(MatchError(ContainSubstring("[grpc] uid and gid can't be set")))
+
+			buildkitTemplate.Spec.RequireClientTLS = false
+			Expect(c.Create(ctx, buildkitTemplate)).To(Succeed(), "allowed when the sidecar isn't used")
+		})
+
 		It("should accept empty TOML", func() {
 			buildkitTemplate := &v1alpha1.BuildkitTemplate{
 				Name:      "test-buildkit-template",
@@ -135,6 +195,7 @@ var _ = Describe("BuildkitTemplateDefaulter", func() {
 			Expect(c.Get(ctx, client.ObjectKeyFromObject(buildkitTemplate), &created)).To(Succeed())
 
 			Expect(created.Spec.Port).To(Equal(int32(1234)))
+			Expect(created.Spec.HealthPort).To(Equal(int32(1235)))
 			Expect(created.Spec.Image).To(Equal("moby/buildkit:latest"))
 			Expect(created.Spec.ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
 			Expect(*created.Spec.Lifecycle.TerminationGracePeriodSeconds).To(Equal(int64(900)))

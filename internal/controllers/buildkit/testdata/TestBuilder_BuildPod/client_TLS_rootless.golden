@@ -1,0 +1,141 @@
+metadata:
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/buildkit: unconfined
+  generateName: test-buildkit-
+  labels:
+    app.kubernetes.io/name: buildkit
+  namespace: test-ns
+spec:
+  activeDeadlineSeconds: 7776000
+  containers:
+  - args:
+    - --addr
+    - unix:///run/user/1000/buildkit/buildkitd.sock
+    - --addr
+    - tcp://0.0.0.0:1234
+    - --oci-worker-no-process-sandbox
+    - --tlscert
+    - /etc/buildkit-tls/tls.crt
+    - --tlskey
+    - /etc/buildkit-tls/tls.key
+    - --tlscacert
+    - /etc/buildkit-tls/ca.crt
+    image: moby/buildkit:rootless
+    livenessProbe:
+      failureThreshold: 6
+      grpc:
+        port: 1235
+        service: null
+      periodSeconds: 30
+      timeoutSeconds: 3
+    name: buildkit
+    ports:
+    - containerPort: 1234
+      name: tcp
+      protocol: TCP
+    readinessProbe:
+      failureThreshold: 2
+      grpc:
+        port: 1235
+        service: null
+      periodSeconds: 15
+    resources: {}
+    securityContext:
+      runAsGroup: 1000
+      runAsUser: 1000
+      seccompProfile:
+        type: Unconfined
+    startupProbe:
+      failureThreshold: 15
+      grpc:
+        port: 1235
+        service: null
+      periodSeconds: 2
+    volumeMounts:
+    - mountPath: /home/user/.local/share/buildkit
+      name: buildkitd
+    - mountPath: /etc/buildkit-tls
+      name: buildkitd-tls
+      readOnly: true
+    - mountPath: /run/user/1000/buildkit
+      name: buildkitd-socket
+  initContainers:
+  - command:
+    - /operator
+    - gen-cert
+    - --dir
+    - /etc/buildkit-tls
+    - --server-name
+    - test-buildkit
+    - --valid-for
+    - 2160h30m30s
+    env:
+    - name: CLIENT_CA
+      value: test-client-ca-pem
+    image: ghcr.io/seatgeek/buildkit-operator:test
+    name: gen-cert
+    resources:
+      limits:
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 16Mi
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      readOnlyRootFilesystem: true
+      runAsGroup: 1000
+      runAsNonRoot: true
+      runAsUser: 1000
+      seccompProfile:
+        type: RuntimeDefault
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /etc/buildkit-tls
+      name: buildkitd-tls
+  - command:
+    - /operator
+    - health-proxy
+    - --listen
+    - :1235
+    - --socket
+    - /run/user/1000/buildkit/buildkitd.sock
+    image: ghcr.io/seatgeek/buildkit-operator:test
+    name: health-proxy
+    ports:
+    - containerPort: 1235
+      name: health
+      protocol: TCP
+    resources:
+      limits:
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 16Mi
+    restartPolicy: Always
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      readOnlyRootFilesystem: true
+      runAsGroup: 1000
+      runAsNonRoot: true
+      runAsUser: 65532
+      seccompProfile:
+        type: RuntimeDefault
+    volumeMounts:
+    - mountPath: /run/user/1000/buildkit
+      name: buildkitd-socket
+  volumes:
+  - emptyDir: {}
+    name: buildkitd
+  - emptyDir:
+      medium: Memory
+    name: buildkitd-tls
+  - emptyDir: {}
+    name: buildkitd-socket
+status: {}

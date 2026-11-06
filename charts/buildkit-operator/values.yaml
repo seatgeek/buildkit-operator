@@ -127,6 +127,13 @@ operator:
       # See the Prometheus operator documentation for configurable fields https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#endpoint
       endpointConfig: {}
 
+# Mutual TLS for BuildkitTemplates that set requireClientTLS
+clientTLS:
+  # Image for TLS pods' gen-cert init container and health-proxy sidecar. Defaults to the operator image,
+  # which contains both. Buildkit pods pull it with image.pullPolicy above, but with their template's
+  # service account, not with imagePullSecrets above.
+  healthProxyImage: ""
+
 # RBAC configuration
 rbac:
   # Specifies whether RBAC resources should be created

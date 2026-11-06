@@ -24,10 +24,12 @@ func TestBuilder_BuildPod(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		buildkit *v1alpha1.Buildkit
-		template *v1alpha1.BuildkitTemplate
-		wantErr  string
+		name          string
+		buildkit      *v1alpha1.Buildkit
+		template      *v1alpha1.BuildkitTemplate
+		tlsImage      string
+		tlsPullPolicy corev1.PullPolicy
+		wantErr       string
 	}{
 		{
 			name: "template not found",
@@ -297,6 +299,72 @@ func TestBuilder_BuildPod(t *testing.T) {
 			},
 		},
 		{
+			name: "client TLS required but not configured",
+			buildkit: &v1alpha1.Buildkit{
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitSpec{
+					Template: "test-template",
+				},
+			},
+			template: &v1alpha1.BuildkitTemplate{
+				Name:      "test-template",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:             1234,
+					HealthPort:       1235,
+					RequireClientTLS: true,
+				},
+			},
+			wantErr: "requires client TLS",
+		},
+		{
+			name: "client TLS",
+			buildkit: &v1alpha1.Buildkit{
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitSpec{
+					Template: "test-template",
+					ClientCA: "test-client-ca-pem",
+				},
+			},
+			template: &v1alpha1.BuildkitTemplate{
+				Name:      "test-template",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:             1234,
+					HealthPort:       1235,
+					Image:            "moby/buildkit:latest",
+					RequireClientTLS: true,
+				},
+			},
+			tlsImage:      "ghcr.io/seatgeek/buildkit-operator:test",
+			tlsPullPolicy: corev1.PullAlways,
+		},
+		{
+			name: "client TLS rootless",
+			buildkit: &v1alpha1.Buildkit{
+				Name:      "test-buildkit",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitSpec{
+					Template: "test-template",
+					ClientCA: "test-client-ca-pem",
+				},
+			},
+			template: &v1alpha1.BuildkitTemplate{
+				Name:      "test-template",
+				Namespace: "test-ns",
+				Spec: v1alpha1.BuildkitTemplateSpec{
+					Port:             1234,
+					HealthPort:       1235,
+					Image:            "moby/buildkit:rootless",
+					Rootless:         true,
+					RequireClientTLS: true,
+				},
+			},
+			tlsImage: "ghcr.io/seatgeek/buildkit-operator:test",
+		},
+		{
 			name: "requested resources exceed template defaults",
 			buildkit: &v1alpha1.Buildkit{
 				Name:      "test-buildkit",
@@ -353,7 +421,7 @@ func TestBuilder_BuildPod(t *testing.T) {
 			}
 			client := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objects...).Build()
 
-			builder := NewBuilder(tt.buildkit, client)
+			builder := NewBuilder(tt.buildkit, client).WithTLS(TLSHelpers{Image: tt.tlsImage, PullPolicy: tt.tlsPullPolicy})
 			pod, err := builder.BuildPod(t.Context())
 
 			if tt.wantErr != "" {
@@ -372,4 +440,17 @@ func TestBuilder_BuildPod(t *testing.T) {
 			autogold.ExpectFile(t, autogold.Raw(yamlBytes))
 		})
 	}
+}
+
+func TestBuilder_configureTLS_requiresUnixSocket(t *testing.T) {
+	t.Parallel()
+
+	b := NewBuilder(&v1alpha1.Buildkit{}, nil).WithTLS(TLSHelpers{Image: "img"})
+	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{{
+		Args: []string{"--addr", "tcp://0.0.0.0:9999"},
+	}}}}
+
+	err := b.configureTLS(pod, &v1alpha1.BuildkitTemplate{})
+	require.ErrorContains(t, err, "unexpected buildkitd socket address")
+	assert.Empty(t, pod.Spec.InitContainers, "no helper containers on a pod the builder refused")
 }

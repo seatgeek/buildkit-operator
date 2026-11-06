@@ -6,6 +6,7 @@ package webhooks
 
 import (
 	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -16,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
+	"github.com/seatgeek/buildkit-operator/internal/test"
 )
 
 var _ = Describe("BuildkitValidator", func() {
@@ -152,6 +154,72 @@ var _ = Describe("BuildkitValidator", func() {
 		})
 	})
 
+	Context("When the template requires client TLS", func() {
+		const tlsTemplateName = "template-with-client-tls"
+
+		BeforeEach(func() {
+			Expect(c.Create(ctx, &v1alpha1.BuildkitTemplate{
+				Name:      tlsTemplateName,
+				Namespace: namespace,
+				Spec:      v1alpha1.BuildkitTemplateSpec{RequireClientTLS: true},
+			})).To(Succeed())
+		})
+
+		It("should reject creation without spec.clientCA", func() {
+			buildkit := &v1alpha1.Buildkit{
+				Name:      "test-buildkit",
+				Namespace: namespace,
+				Spec:      v1alpha1.BuildkitSpec{Template: tlsTemplateName},
+			}
+
+			Expect(c.Create(ctx, buildkit)).To(MatchError(ContainSubstring("spec.clientCA")))
+		})
+
+		It("should reject a clientCA outside its validity window", func() {
+			expired := &v1alpha1.Buildkit{
+				Name:      "expired-ca",
+				Namespace: namespace,
+				Spec: v1alpha1.BuildkitSpec{
+					Template: tlsTemplateName,
+					ClientCA: test.CACertPEMValid(time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour)),
+				},
+			}
+			Expect(c.Create(ctx, expired)).To(MatchError(ContainSubstring("CA certificate expired at")))
+
+			future := &v1alpha1.Buildkit{
+				Name:      "future-ca",
+				Namespace: namespace,
+				Spec: v1alpha1.BuildkitSpec{
+					Template: tlsTemplateName,
+					ClientCA: test.CACertPEMValid(time.Now().Add(time.Hour), time.Now().Add(2*time.Hour)),
+				},
+			}
+			Expect(c.Create(ctx, future)).To(MatchError(ContainSubstring("CA certificate is not valid until")))
+		})
+
+		It("should reject a clientCA that is not a CA certificate", func() {
+			buildkit := &v1alpha1.Buildkit{
+				Name:      "test-buildkit",
+				Namespace: namespace,
+				Spec:      v1alpha1.BuildkitSpec{Template: tlsTemplateName, ClientCA: "not a certificate"},
+			}
+
+			Expect(c.Create(ctx, buildkit)).To(MatchError(ContainSubstring("expected a PEM-encoded CERTIFICATE block")))
+		})
+
+		It("should allow creation with a valid clientCA and keep it immutable", func() {
+			buildkit := &v1alpha1.Buildkit{
+				Name:      "test-buildkit",
+				Namespace: namespace,
+				Spec:      v1alpha1.BuildkitSpec{Template: tlsTemplateName, ClientCA: testCA()},
+			}
+			Expect(c.Create(ctx, buildkit)).To(Succeed())
+
+			buildkit.Spec.ClientCA = testCA()
+			Expect(c.Update(ctx, buildkit)).To(MatchError(ContainSubstring("spec changes are not allowed")))
+		})
+	})
+
 	Context("When updating an existing Buildkit resource", func() {
 		It("should allow updates to the metadata", func() {
 			buildkit := &v1alpha1.Buildkit{
@@ -229,3 +297,7 @@ var _ = Describe("BuildkitValidator", func() {
 		})
 	})
 })
+
+func testCA() string {
+	return test.CACertPEM()
+}

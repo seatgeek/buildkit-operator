@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -18,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
+	"github.com/seatgeek/buildkit-operator/internal/tlsutil"
 )
 
 // +kubebuilder:webhook:path=/validate-buildkit-seatgeek-io-v1alpha1-buildkit,mutating=false,failurePolicy=fail,sideEffects=None,groups=buildkit.seatgeek.io,resources=buildkits,verbs=create;update,versions=v1alpha1,name=mbuildkit.kb.io,admissionReviewVersions=v1
@@ -52,11 +54,26 @@ func (v *BuildkitValidator) ValidateCreate(ctx context.Context, obj runtime.Obje
 			return nil, apierrors.NewInternalError(fmt.Errorf("failed to get BuildkitTemplate '%s' in namespace '%s': %w", bk.Spec.Template, bk.Namespace, err))
 		}
 		errorList = append(errorList, field.NotFound(field.NewPath("spec", "template"), bk.Spec.Template))
-	} else if template.Spec.Lifecycle.RequireOwner && len(bk.GetOwnerReferences()) == 0 {
-		errorList = append(errorList, field.Required(
-			field.NewPath("metadata", "ownerReferences"),
-			fmt.Sprintf("BuildkitTemplate '%s' requires owner references but none are present", bk.Spec.Template),
-		))
+	} else {
+		errorList = append(errorList, validateAgainstTemplate(bk, &template)...)
+	}
+
+	var warnings admission.Warnings
+	if bk.Spec.ClientCA != "" {
+		caPath := field.NewPath("spec", "clientCA")
+		ca, err := tlsutil.ParseCACertPEM(bk.Spec.ClientCA)
+		now := time.Now()
+		switch {
+		case err != nil:
+			errorList = append(errorList, field.Invalid(caPath, "<PEM omitted>", err.Error()))
+		case now.After(ca.NotAfter):
+			errorList = append(errorList, field.Invalid(caPath, "<PEM omitted>", "CA certificate expired at "+ca.NotAfter.UTC().Format(time.RFC3339)))
+		case ca.NotBefore.After(now.Add(tlsutil.ClockSkew)):
+			errorList = append(errorList, field.Invalid(caPath, "<PEM omitted>", "CA certificate is not valid until "+ca.NotBefore.UTC().Format(time.RFC3339)))
+		case template.Spec.RequireClientTLS && now.Add(tlsDeadline(&template)).After(ca.NotAfter):
+			// The instance may outlive the CA, after which no client can connect.
+			warnings = append(warnings, "spec.clientCA expires at "+ca.NotAfter.UTC().Format(time.RFC3339)+", before this instance's pod deadline")
+		}
 	}
 
 	if len(errorList) > 0 {
@@ -70,7 +87,16 @@ func (v *BuildkitValidator) ValidateCreate(ctx context.Context, obj runtime.Obje
 		)
 	}
 
-	return nil, nil
+	return warnings, nil
+}
+
+// tlsDeadline is the pod deadline for a template that requires client TLS.
+func tlsDeadline(template *v1alpha1.BuildkitTemplate) time.Duration {
+	deadline := v1alpha1.DefaultTLSActiveDeadlineSeconds
+	if d := template.Spec.Lifecycle.ActiveDeadlineSeconds; d != nil {
+		deadline = *d
+	}
+	return time.Duration(deadline) * time.Second
 }
 
 func (v *BuildkitValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
@@ -94,4 +120,26 @@ func (v *BuildkitValidator) ValidateUpdate(_ context.Context, oldObj, newObj run
 func (v *BuildkitValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	// No validation needed on delete
 	return nil, nil
+}
+
+func validateAgainstTemplate(bk *v1alpha1.Buildkit, template *v1alpha1.BuildkitTemplate) field.ErrorList {
+	var errorList field.ErrorList
+
+	if template.Spec.Lifecycle.RequireOwner && len(bk.GetOwnerReferences()) == 0 {
+		errorList = append(errorList, field.Required(
+			field.NewPath("metadata", "ownerReferences"),
+			fmt.Sprintf("BuildkitTemplate '%s' requires owner references but none are present", bk.Spec.Template),
+		))
+	}
+
+	if template.Spec.RequireClientTLS {
+		if bk.Spec.ClientCA == "" {
+			errorList = append(errorList, field.Required(
+				field.NewPath("spec", "clientCA"),
+				fmt.Sprintf("BuildkitTemplate '%s' requires client TLS; supply the PEM CA certificate that signs your client certificate", bk.Spec.Template),
+			))
+		}
+	}
+
+	return errorList
 }

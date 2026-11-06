@@ -49,6 +49,12 @@ spec:
                 description: Annotations can be used to attach arbitrary metadata
                   to the Buildkit instance.
                 type: object
+              clientCA:
+                description: |-
+                  ClientCA is a PEM-encoded CA certificate. When the template sets requireClientTLS, buildkitd only
+                  accepts clients presenting a certificate signed by this CA. Only the public certificate belongs
+                  here; the client keeps the CA and client private keys to itself.
+                type: string
               labels:
                 additionalProperties:
                   type: string
@@ -203,6 +209,17 @@ spec:
                   - version
                   type: object
                 type: array
+              serverCA:
+                description: |-
+                  ServerCA is the PEM-encoded certificate clients should trust for the endpoint when the template
+                  sets requireClientTLS: the self-signed certificate the pod minted for itself. Empty when TLS is
+                  not in use.
+                type: string
+              serverName:
+                description: |-
+                  ServerName is the name clients must verify the server certificate against (the endpoint is a pod
+                  IP, which the certificate does not cover). Empty when TLS is not in use.
+                type: string
             type: object
         type: object
     served: true

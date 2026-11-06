@@ -53,6 +53,30 @@ func (v *BuildkitTemplateValidator) validate(obj runtime.Object) (admission.Warn
 		))
 	}
 
+	if bkt.Spec.RequireClientTLS {
+		// Server certificates are issued to outlive the pod, so its deadline bounds their lifetime.
+		if d := bkt.Spec.Lifecycle.ActiveDeadlineSeconds; d != nil && (*d < 1 || *d > v1alpha1.MaxTLSActiveDeadlineSeconds) {
+			errorList = append(errorList, field.Invalid(
+				field.NewPath("spec", "lifecycle", "activeDeadlineSeconds"),
+				*d,
+				fmt.Sprintf("must be between 1 and %d (366 days) when spec.requireClientTLS is true", v1alpha1.MaxTLSActiveDeadlineSeconds),
+			))
+		}
+		if bkt.Spec.HealthPort < 1 || bkt.Spec.HealthPort > 65535 {
+			errorList = append(errorList, field.Invalid(
+				field.NewPath("spec", "healthPort"),
+				bkt.Spec.HealthPort,
+				"spec.healthPort must be between 1 and 65535",
+			))
+		} else if bkt.Spec.HealthPort == bkt.Spec.Port {
+			errorList = append(errorList, field.Invalid(
+				field.NewPath("spec", "healthPort"),
+				bkt.Spec.HealthPort,
+				"spec.healthPort must differ from spec.port",
+			))
+		}
+	}
+
 	// Validate the toml syntax
 	var tmp any
 	if _, err := toml.Decode(bkt.Spec.BuildkitdToml, &tmp); err != nil {
@@ -66,6 +90,14 @@ func (v *BuildkitTemplateValidator) validate(obj runtime.Object) (admission.Warn
 			field.NewPath("spec", "buildkitdToml"),
 			bkt.Spec.BuildkitdToml,
 			reason,
+		))
+	} else if bkt.Spec.RequireClientTLS && setsSocketOwner(tmp) {
+		// The health sidecar joins the group buildkitd gives its unix socket by default (0, or 1000
+		// when rootless); a different owner would lock it out and fail every probe.
+		errorList = append(errorList, field.Invalid(
+			field.NewPath("spec", "buildkitdToml"),
+			"[grpc] uid/gid",
+			"[grpc] uid and gid can't be set when spec.requireClientTLS is true",
 		))
 	}
 
@@ -110,6 +142,10 @@ func (b BuildkitTemplateDefaulter) Default(_ context.Context, obj runtime.Object
 		bkt.Spec.Port = 1234
 	}
 
+	if bkt.Spec.HealthPort == 0 {
+		bkt.Spec.HealthPort = 1235
+	}
+
 	if bkt.Spec.Lifecycle.TerminationGracePeriodSeconds == nil {
 		bkt.Spec.Lifecycle.TerminationGracePeriodSeconds = new(int64(900)) // 15 minutes
 	}
@@ -130,3 +166,18 @@ func (b BuildkitTemplateDefaulter) Default(_ context.Context, obj runtime.Object
 }
 
 var _ webhook.CustomDefaulter = (*BuildkitTemplateDefaulter)(nil)
+
+// setsSocketOwner reports whether decoded buildkitd TOML sets [grpc] uid or gid.
+func setsSocketOwner(config any) bool {
+	root, ok := config.(map[string]any)
+	if !ok {
+		return false
+	}
+	grpcConfig, ok := root["grpc"].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, uid := grpcConfig["uid"]
+	_, gid := grpcConfig["gid"]
+	return uid || gid
+}

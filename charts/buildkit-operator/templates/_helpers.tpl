@@ -81,3 +81,14 @@ The name of the webhook service
 {{- define "buildkit-operator.webhookServiceName" -}}
 {{- include "buildkit-operator.fullname" . }}-webhook-service
 {{- end }}
+
+{{/*
+Operator image reference
+*/}}
+{{- define "buildkit-operator.image" -}}
+{{- if .Values.image.digest -}}
+{{ .Values.image.repository }}@{{ .Values.image.digest }}
+{{- else -}}
+{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+{{- end -}}
+{{- end }}
