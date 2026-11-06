@@ -10,7 +10,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -88,8 +87,9 @@ func GenerateServerCert(serverName string, validity time.Duration, now time.Time
 	}
 
 	tmpl := &x509.Certificate{
-		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: serverName},
+		SerialNumber: serial,
+		// No subject: a common name is limited to 64 characters, and clients only check the SAN, which
+		// Go marks critical when the subject is empty.
 		DNSNames:              []string{serverName},
 		NotBefore:             now.Add(-ClockSkew),
 		NotAfter:              now.Add(validity),

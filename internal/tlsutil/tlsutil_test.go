@@ -16,6 +16,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,6 +51,13 @@ func TestGenerateServerCert(t *testing.T) {
 	require.Error(t, err, "the certificate must not be valid for another instance's name")
 
 	assert.WithinDuration(t, now.Add(time.Hour), cert.NotAfter, time.Second)
+
+	// Kubernetes names run to 253 characters, past a common name's 64-character limit.
+	long := strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63)
+	longPEM, _, err := GenerateServerCert(long, time.Hour, now)
+	require.NoError(t, err)
+	_, err = ParseServerCertPEM(longPEM, long)
+	require.NoError(t, err)
 }
 
 func TestParseCACertPEM(t *testing.T) {
