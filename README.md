@@ -115,7 +115,7 @@ docker buildx create --driver remote \
   tcp://10.1.2.3:1234
 ```
 
-Kubelet gRPC probes can't present a client certificate, so these pods also run a `health-proxy` sidecar that serves only `grpc.health.v1` in plaintext on `healthPort` (default `1235`), answering each check from buildkitd's unix socket. The operator needs the Helm value `clientTLS.namespaces` to list the namespaces where such templates are used; it gets `get`/`create`/`delete` on Secrets only there. Turning `requireClientTLS` on stops any pod of that template still running without TLS within about a second, skipping its usual grace period; it is replaced by a TLS pod if its `Buildkit` has a `clientCA`.
+Kubelet gRPC probes can't present a client certificate, so these pods also run a `health-proxy` sidecar that serves only `grpc.health.v1` in plaintext on `healthPort` (default `1235`), answering each check from buildkitd's unix socket. The sidecar runs in the Buildkit pod under the template's `serviceAccountName`, so the chart's `imagePullSecrets` don't apply to it: if the operator image is private, give that service account pull credentials for it, or point `clientTLS.healthProxyImage` at an image the pods can already pull. The operator needs the Helm value `clientTLS.namespaces` to list the namespaces where such templates are used; it gets `get`/`create`/`delete` on Secrets only there. Turning `requireClientTLS` on stops any pod of that template still running without TLS within about a second, skipping its usual grace period; it is replaced by a TLS pod if its `Buildkit` has a `clientCA`.
 
 ## Installation
 

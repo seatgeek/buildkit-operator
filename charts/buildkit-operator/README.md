@@ -60,7 +60,7 @@ helm install buildkit-operator \
 | `webhook.enabled`             | Enable admission webhooks                 | `true`                               |
 | `webhook.certManager.enabled` | Use cert-manager for webhook certificates | `true`                               |
 | `clientTLS.namespaces`        | Namespaces using `requireClientTLS` templates; the operator gets `get`/`create`/`delete` on Secrets there | `[]` |
-| `clientTLS.healthProxyImage`  | Image for the TLS health-proxy sidecar    | `""` (uses the operator image)       |
+| `clientTLS.healthProxyImage`  | Image for the TLS health-proxy sidecar; pulled with the template's service account, not `imagePullSecrets` | `""` (uses the operator image)       |
 | `rbac.create`                 | Create RBAC resources                     | `true`                               |
 | `crds.install`                | Install CRDs with chart                   | `true`                               |
 

@@ -133,7 +133,8 @@ clientTLS:
   # namespace-scoped Role, to store every Buildkit's server certificate. With none listed, Buildkits
   # using those templates never start.
   namespaces: []
-  # Image for the health-proxy sidecar. Defaults to the operator image, which contains it.
+  # Image for the health-proxy sidecar. Defaults to the operator image, which contains it. Buildkit pods
+  # pull it with their template's service account, not with imagePullSecrets above.
   healthProxyImage: ""
 
 # RBAC configuration
