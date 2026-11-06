@@ -36,6 +36,11 @@ func parseOneCertPEM(data []byte) (*x509.Certificate, error) {
 	if next, _ := pem.Decode(rest); next != nil {
 		return nil, errors.New("expected exactly one certificate")
 	}
+	// x509.CertPool.AppendCertsFromPEM, which buildkitd and clients load certificates with, skips
+	// blocks that have headers.
+	if len(block.Headers) > 0 {
+		return nil, errors.New("PEM headers are not supported")
+	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {

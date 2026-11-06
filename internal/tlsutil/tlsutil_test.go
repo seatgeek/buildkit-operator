@@ -68,6 +68,7 @@ func TestParseCACertPEM(t *testing.T) {
 		{name: "garbage", data: "not pem", wantErr: "expected a PEM-encoded CERTIFICATE block"},
 		{name: "private key block", data: string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte{1}})), wantErr: "expected a PEM-encoded CERTIFICATE block"},
 		{name: "two certificates", data: caPEM + caPEM, wantErr: "exactly one certificate"},
+		{name: "PEM headers", data: withPEMHeader(t, caPEM), wantErr: "PEM headers"},
 		{name: "leaf certificate", data: leafCertPEM(t), wantErr: "not a CA"},
 		{name: "CA without certificate signing", data: caCertPEM(t, x509.KeyUsageDigitalSignature), wantErr: "keyCertSign"},
 		{name: "CA without key usage", data: caCertPEM(t, 0)},
@@ -90,6 +91,15 @@ func TestParseCACertPEM(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// withPEMHeader re-encodes a PEM certificate with a header, which CertPool.AppendCertsFromPEM ignores.
+func withPEMHeader(t *testing.T, certPEM string) string {
+	t.Helper()
+	block, _ := pem.Decode([]byte(certPEM))
+	require.NotNil(t, block)
+	block.Headers = map[string]string{"Comment": "client CA"}
+	return string(pem.EncodeToMemory(block))
 }
 
 func leafCertPEM(t *testing.T) string {
