@@ -175,6 +175,9 @@ func (r *reconciler) runBuildkit() *state {
 
 			obj.Status.Endpoint = fmt.Sprintf("tcp://%s", net.JoinHostPort(pod.Status.PodIP, strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort))))
 
+			if tlsOpts != nil {
+				return nil, r.recheckAtClientCAExpiry(obj)
+			}
 			return nil, types.DoneResult()
 		},
 	}
@@ -438,6 +441,23 @@ func clientCAProblem(clientCA string, now time.Time) string {
 		return "is not valid until " + ca.NotBefore.UTC().Format(time.RFC3339)
 	}
 	return ""
+}
+
+// recheckAtClientCAExpiry keeps the instance ready but reconciles again just after the client CA
+// expires. Nothing else would: the pod stays healthy, so no event fires, yet no client can connect.
+// Achilles requeues only when RequeueMsg is set, and counts any requeue as an unsuccessful reconcile
+// in its processing-duration metric.
+func (r *reconciler) recheckAtClientCAExpiry(obj *v1alpha1.Buildkit) types.Result {
+	ca, err := tlsutil.ParseCACertPEM(obj.Spec.ClientCA)
+	if err != nil {
+		return types.ErrorResult(fmt.Errorf("parsing client CA: %w", err))
+	}
+	// clientCAProblem treats NotAfter itself as still valid.
+	return types.Result{
+		Done:         true,
+		RequeueMsg:   "Re-checking at client CA expiry",
+		RequeueAfter: ca.NotAfter.Sub(r.now()) + time.Second,
+	}
 }
 
 // reissueIfCertExpiresFirst discards the server certificate if it would expire before the pod must
