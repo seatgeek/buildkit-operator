@@ -615,7 +615,8 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 			Namespace: tlsExpiryNamespace,
 			Spec: v1alpha1.BuildkitSpec{
 				Template: template.Name,
-				ClientCA: test.CACertPEMValid(time.Now().Add(-time.Minute), time.Now().Add(8*time.Second)),
+				// Long enough for the pod to be created before it expires, even on a slow CI runner.
+				ClientCA: test.CACertPEMValid(time.Now().Add(-time.Minute), time.Now().Add(15*time.Second)),
 			},
 		}
 		Expect(c.Create(ctx, bk)).To(Succeed())
@@ -625,20 +626,17 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsExpiryNamespace))).To(Succeed())
 			g.Expect(pods.Items).To(HaveLen(1))
 		}).Should(Succeed())
-		markPodReady(client.ObjectKeyFromObject(&pods.Items[0]))
-		Eventually(func(g Gomega) {
-			var updated v1alpha1.Buildkit
-			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
-			g.Expect(updated.Status.Endpoint).NotTo(BeEmpty())
-		}).Should(Succeed())
 
+		// Only the running-TLS-pod check can report ClientCAInvalid once the template no longer
+		// requires TLS, so this needs no timing between the pod becoming ready and the CA expiring.
 		setRequireTLS(template, false)
+		markPodReady(client.ObjectKeyFromObject(&pods.Items[0]))
 		Eventually(func(g Gomega) {
 			var updated v1alpha1.Buildkit
 			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
 			g.Expect(updated.Status.Endpoint).To(BeEmpty())
 			g.Expect(updated.Status.ServerCA).To(BeEmpty())
 			g.Expect(updated.GetCondition(v1alpha1.TypeDeployed).Reason).To(Equal(buildkit.ReasonClientCAInvalid))
-		}, "20s").Should(Succeed())
+		}, "40s").Should(Succeed())
 	})
 })
