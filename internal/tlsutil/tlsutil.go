@@ -36,11 +36,6 @@ func parseOneCertPEM(data []byte) (*x509.Certificate, error) {
 	if next, _ := pem.Decode(rest); next != nil {
 		return nil, errors.New("expected exactly one certificate")
 	}
-	// x509.CertPool.AppendCertsFromPEM, which buildkitd and clients load certificates with, skips
-	// blocks that have headers.
-	if len(block.Headers) > 0 {
-		return nil, errors.New("PEM headers are not supported")
-	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
@@ -50,7 +45,7 @@ func parseOneCertPEM(data []byte) (*x509.Certificate, error) {
 }
 
 // ParseCACertPEM checks that data holds exactly one PEM certificate usable as a CA.
-func ParseCACertPEM(data string) (*x509.Certificate, error) { //nolint:unparam // other packages use the certificate
+func ParseCACertPEM(data string) (*x509.Certificate, error) {
 	cert, err := parseOneCertPEM([]byte(data))
 	if err != nil {
 		return nil, err
@@ -151,7 +146,8 @@ func WriteServerFiles(dir, serverName, clientCA string, validFor time.Duration, 
 	if validFor <= 0 {
 		return nil, fmt.Errorf("validity must be positive, got %s", validFor)
 	}
-	if _, err := ParseCACertPEM(clientCA); err != nil {
+	ca, err := ParseCACertPEM(clientCA)
+	if err != nil {
 		return nil, fmt.Errorf("client CA: %w", err)
 	}
 	certPEM, keyPEM, err := GenerateServerCert(serverName, validFor, now)
@@ -163,7 +159,9 @@ func WriteServerFiles(dir, serverName, clientCA string, validFor time.Duration, 
 		data []byte
 		mode os.FileMode
 	}{
-		{ClientCAFile, []byte(clientCA), 0o444},
+		// Re-encoded, so buildkitd loads exactly the certificate validated here, whatever else (PEM
+		// headers, surrounding text) the original carried.
+		{ClientCAFile, pem.EncodeToMemory(&pem.Block{Type: pemCertificate, Bytes: ca.Raw}), 0o444},
 		{CertFile, certPEM, 0o444},
 		{KeyFile, keyPEM, 0o400},
 	} {

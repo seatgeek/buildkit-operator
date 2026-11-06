@@ -68,7 +68,6 @@ func TestParseCACertPEM(t *testing.T) {
 		{name: "garbage", data: "not pem", wantErr: "expected a PEM-encoded CERTIFICATE block"},
 		{name: "private key block", data: string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte{1}})), wantErr: "expected a PEM-encoded CERTIFICATE block"},
 		{name: "two certificates", data: caPEM + caPEM, wantErr: "exactly one certificate"},
-		{name: "PEM headers", data: withPEMHeader(t, caPEM), wantErr: "PEM headers"},
 		{name: "leaf certificate", data: leafCertPEM(t), wantErr: "not a CA"},
 		{name: "CA without certificate signing", data: caCertPEM(t, x509.KeyUsageDigitalSignature), wantErr: "keyCertSign"},
 		{name: "CA without key usage", data: caCertPEM(t, 0)},
@@ -240,6 +239,15 @@ func TestWriteServerFiles(t *testing.T) {
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	assert.Len(t, entries, 3, "no temporary files may be left behind")
+
+	// buildkitd loads the CA with CertPool.AppendCertsFromPEM, which skips blocks with headers; the file
+	// holds only the validated certificate.
+	headered := "issued by: tests\n" + withPEMHeader(t, caPEM)
+	_, err = WriteServerFiles(dir, "buildkit-a", headered, 2*time.Hour, now)
+	require.NoError(t, err)
+	assert.Equal(t, caPEM, string(read(ClientCAFile, 0o444)))
+	pool := x509.NewCertPool()
+	assert.True(t, pool.AppendCertsFromPEM(read(ClientCAFile, 0o444)))
 }
 
 func TestWriteServerFiles_rejectsBadClientCA(t *testing.T) {
