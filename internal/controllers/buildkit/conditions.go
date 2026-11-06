@@ -25,4 +25,7 @@ const (
 	// ReasonTLSNotConfigured means the template requires client TLS but the operator was started without
 	// the image for TLS pods' helper containers.
 	ReasonTLSNotConfigured api.ConditionReason = "TLSNotConfigured"
+	// ReasonServerCertificateUnusable means a TLS pod reported no server certificate the controller can
+	// publish.
+	ReasonServerCertificateUnusable api.ConditionReason = "ServerCertificateUnusable"
 )

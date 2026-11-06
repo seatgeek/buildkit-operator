@@ -7,6 +7,8 @@ package buildkit
 import (
 	"cmp"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"slices"
@@ -61,131 +63,129 @@ func (r *reconciler) runBuildkit() *state {
 		Transition: func(ctx context.Context, obj *v1alpha1.Buildkit, out *types.OutputSet) (*state, types.Result) {
 			log := r.log.With("name", obj.Name, "namespace", obj.Namespace)
 
+			// Until the pods have been read, nothing is known that could change what is advertised.
 			template, err := r.getTemplate(ctx, obj)
 			if err != nil {
 				return nil, types.ErrorResult(err)
 			}
-			requireTLS := template != nil && template.Spec.RequireClientTLS
-
-			// Check if we already have any Buildkit pods
 			managedPods, err := r.getExistingManagedPods(ctx, obj, log)
 			if err != nil {
 				return nil, types.ErrorResult(err)
 			}
 
-			if requireTLS {
-				if stop, err := r.prepareTLS(ctx, obj, managedPods, out, log); err != nil {
-					return nil, types.ErrorResult(err)
-				} else if stop != nil {
-					return nil, *stop
-				}
-			} else if obj.Status.ServerCA != "" && len(podsWithoutTLS(managedPods)) == len(managedPods) {
-				// TLS was turned off and no TLS pod remains. Withdraw the TLS endpoint and its pinned
-				// certificate; the plaintext pod's endpoint is published once it is ready.
-				if err := r.clearConnectionStatus(ctx, obj); err != nil {
-					return nil, types.ErrorResult(err)
-				}
+			conn, result := r.runPod(ctx, obj, template, managedPods, out, log)
+			if err := r.setConnectionStatus(ctx, obj, conn); err != nil {
+				return nil, types.ErrorResult(errors.Join(result.Err, err))
 			}
-
-			// The pod may have vanished before this controller saw it terminating; stop advertising it.
-			if len(managedPods) == 0 {
-				if err := r.clearConnectionStatus(ctx, obj); err != nil {
-					return nil, types.ErrorResult(err)
-				}
-			}
-
-			// Ensure we have exactly one Buildkit pod running, creating or deleting as necessary
-			pod, err := r.ensureExactlyOnePod(ctx, obj, managedPods, requireTLS, out, log)
-			if err != nil {
-				return nil, types.ErrorResult(err)
-			}
-
-			// Do we need to add or remove anything? If so, apply those changes now and requeue.
-			if out.GetApplied().Len() > 0 || out.GetDeleted().Len() > 0 {
-				return nil, types.Result{
-					Done:                   true,
-					RequeueAfterCompletion: true,
-					RequeueMsg:             "Applying pod changes",
-					Reason:                 reasonApplyingChanges,
-				}
-			}
-
-			// Whether the running pod serves TLS, which can differ from what the template now requires
-			// (requireClientTLS turned off leaves a TLS pod running until it is replaced).
-			podTLS := len(podsWithoutTLS([]corev1.Pod{*pod})) == 0
-
-			// A terminating TLS pod may still look ready, or be held by a finalizer; stop advertising it
-			// rather than let clients connect to an instance on its way out.
-			if podTLS && pod.DeletionTimestamp != nil {
-				if err := r.clearConnectionStatus(ctx, obj); err != nil {
-					return nil, types.ErrorResult(err)
-				}
-				return nil, types.RequeueResultWithReasonAndBackoff("Buildkit pod terminating", "PodTerminating")
-			}
-
-			// At this point, we have exactly one pod, so we can proceed to check its status. Until it is
-			// running and healthy, nothing is advertised.
-			notReady := func(result types.Result) (*state, types.Result) {
-				if err := r.clearConnectionStatus(ctx, obj); err != nil {
-					return nil, types.ErrorResult(err)
-				}
-				return nil, result
-			}
-
-			// Are all containers running and healthy?
-			if pod.Status.Phase == corev1.PodFailed {
-				log.Warnw("Buildkit pod has failed", "pod", pod.Name, "reason", pod.Status.Reason, "message", pod.Status.Message)
-				return notReady(types.Result{
-					Done: true,
-					CustomStatusCondition: &types.ResultStatusCondition{
-						Reason:  "PodFailed",
-						Status:  corev1.ConditionFalse,
-						Message: fmt.Sprintf("Buildkit pod %s has failed: %s", pod.Name, cmp.Or(pod.Status.Message, pod.Status.Reason, "unknown failure")),
-					},
-				})
-			}
-
-			if pod.Status.Phase != corev1.PodRunning {
-				log.Debugw("Buildkit pod is not yet running", "pod", pod.Name, "phase", pod.Status.Phase)
-				return notReady(types.RequeueResultWithReasonAndBackoff("Buildkit pod not running", "PodNotRunning"))
-			}
-
-			for _, containerStatus := range pod.Status.ContainerStatuses {
-				if !containerStatus.Ready {
-					log.Debugw("Buildkit pod container not ready", "pod", pod.Name, "container", containerStatus.Name)
-					return notReady(types.RequeueResultWithReasonAndBackoff("Buildkit pod container not ready", "ContainerNotReady"))
-				}
-			}
-
-			// If we reach here, the pod is running and all containers are ready!
-			if len(pod.Spec.Containers) == 0 || len(pod.Spec.Containers[0].Ports) == 0 {
-				log.Errorw("Buildkit pod does not have containers with ports defined", "pod", pod.Name)
-				return nil, types.ErrorResult(fmt.Errorf("buildkit pod %s does not have containers with ports defined", pod.Name))
-			}
-
-			if podTLS {
-				// prepareTLS only checks the client CA while the template requires TLS; a TLS pod left
-				// running after that was turned off must not be advertised once no client can connect.
-				if problem := clientCAProblem(obj.Spec.ClientCA, r.now()); problem != "" {
-					return notReady(clientCAInvalid(problem))
-				}
-				cert, err := podServerCert(pod, obj.Name)
-				if err != nil {
-					log.Errorw("Buildkit pod reported no usable server certificate", "pod", pod.Name, "error", err)
-					return notReady(types.ErrorResult(fmt.Errorf("buildkit pod %s: %w", pod.Name, err)))
-				}
-				obj.Status.ServerCA = cert
-				obj.Status.ServerName = obj.Name
-			}
-
-			obj.Status.Endpoint = fmt.Sprintf("tcp://%s", net.JoinHostPort(pod.Status.PodIP, strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort))))
-
-			if podTLS {
-				return nil, r.recheckAtClientCAExpiry(obj)
-			}
-			return nil, types.DoneResult()
+			return nil, result
 		},
 	}
+}
+
+// connection is what clients need to reach a Buildkit's pod.
+type connection struct {
+	endpoint   string
+	serverCA   string // empty for a plaintext pod
+	serverName string // empty for a plaintext pod
+}
+
+// runPod ensures the Buildkit has exactly one pod and returns the connection to advertise for it:
+// nil, unless the pod is running, healthy and (for TLS) has reported a usable certificate. Every
+// return, errors included, decides what is advertised.
+func (r *reconciler) runPod(ctx context.Context, obj *v1alpha1.Buildkit, template *v1alpha1.BuildkitTemplate, managedPods []corev1.Pod, out *types.OutputSet, log *zap.SugaredLogger) (*connection, types.Result) {
+	requireTLS := template != nil && template.Spec.RequireClientTLS
+
+	if requireTLS {
+		if stop, err := r.prepareTLS(ctx, obj, managedPods, out, log); err != nil {
+			return nil, types.ErrorResult(err)
+		} else if stop != nil {
+			return nil, *stop
+		}
+	}
+
+	// Ensure we have exactly one Buildkit pod running, creating or deleting as necessary
+	pod, err := r.ensureExactlyOnePod(ctx, obj, managedPods, requireTLS, out, log)
+	if err != nil {
+		return nil, types.ErrorResult(err)
+	}
+
+	// Do we need to add or remove anything? If so, apply those changes now and requeue.
+	if out.GetApplied().Len() > 0 || out.GetDeleted().Len() > 0 {
+		return nil, types.Result{
+			Done:                   true,
+			RequeueAfterCompletion: true,
+			RequeueMsg:             "Applying pod changes",
+			Reason:                 reasonApplyingChanges,
+		}
+	}
+
+	// Whether the running pod serves TLS, which can differ from what the template now requires
+	// (requireClientTLS turned off leaves a TLS pod running until it is replaced).
+	podTLS := len(podsWithoutTLS([]corev1.Pod{*pod})) == 0
+
+	// A terminating pod may still look ready, or be held by a finalizer; don't let clients connect to
+	// an instance on its way out.
+	if pod.DeletionTimestamp != nil {
+		return nil, types.RequeueResultWithReasonAndBackoff("Buildkit pod terminating", "PodTerminating")
+	}
+
+	// Are all containers running and healthy?
+	if pod.Status.Phase == corev1.PodFailed {
+		log.Warnw("Buildkit pod has failed", "pod", pod.Name, "reason", pod.Status.Reason, "message", pod.Status.Message)
+		return nil, types.Result{
+			Done: true,
+			CustomStatusCondition: &types.ResultStatusCondition{
+				Reason:  "PodFailed",
+				Status:  corev1.ConditionFalse,
+				Message: fmt.Sprintf("Buildkit pod %s has failed: %s", pod.Name, cmp.Or(pod.Status.Message, pod.Status.Reason, "unknown failure")),
+			},
+		}
+	}
+
+	if pod.Status.Phase != corev1.PodRunning {
+		log.Debugw("Buildkit pod is not yet running", "pod", pod.Name, "phase", pod.Status.Phase)
+		return nil, types.RequeueResultWithReasonAndBackoff("Buildkit pod not running", "PodNotRunning")
+	}
+
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if !containerStatus.Ready {
+			log.Debugw("Buildkit pod container not ready", "pod", pod.Name, "container", containerStatus.Name)
+			return nil, types.RequeueResultWithReasonAndBackoff("Buildkit pod container not ready", "ContainerNotReady")
+		}
+	}
+
+	// If we reach here, the pod is running and all containers are ready!
+	if len(pod.Spec.Containers) == 0 || len(pod.Spec.Containers[0].Ports) == 0 {
+		log.Errorw("Buildkit pod does not have containers with ports defined", "pod", pod.Name)
+		return nil, types.ErrorResult(fmt.Errorf("buildkit pod %s does not have containers with ports defined", pod.Name))
+	}
+
+	conn := &connection{
+		endpoint: fmt.Sprintf("tcp://%s", net.JoinHostPort(pod.Status.PodIP, strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort)))),
+	}
+	if !podTLS {
+		return conn, types.DoneResult()
+	}
+
+	// prepareTLS only checks the client CA while the template requires TLS; a TLS pod left running
+	// after that was turned off must not be advertised once no client can connect.
+	if problem := clientCAProblem(obj.Spec.ClientCA, r.now()); problem != "" {
+		return nil, clientCAInvalid(problem)
+	}
+	cert, err := podServerCert(pod, obj.Name)
+	if err != nil {
+		log.Errorw("Buildkit pod reported no usable server certificate", "pod", pod.Name, "error", err)
+		return nil, types.Result{
+			Done: true,
+			CustomStatusCondition: &types.ResultStatusCondition{
+				Reason:  ReasonServerCertificateUnusable,
+				Status:  corev1.ConditionFalse,
+				Message: fmt.Sprintf("Buildkit pod %s: %s", pod.Name, err),
+			},
+		}
+	}
+	conn.serverCA, conn.serverName = cert, obj.Name
+	return conn, r.recheckAtClientCAExpiry(obj)
 }
 
 // getExistingManagedPods retrieves all pods that are tracked as resources managed by the Buildkit instance.
@@ -249,22 +249,38 @@ func (r *reconciler) ensureExactlyOnePod(ctx context.Context, obj *v1alpha1.Buil
 	return &managedPods[0], nil
 }
 
-// clearConnectionStatus removes the endpoint and TLS details so clients stop using an instance that
-// has been stopped. The FSM writes status as a JSON merge patch of omitempty fields, which cannot
-// clear a field, so this patches them to null directly.
-func (r *reconciler) clearConnectionStatus(ctx context.Context, obj *v1alpha1.Buildkit) error {
-	if obj.Status.Endpoint == "" && obj.Status.ServerCA == "" && obj.Status.ServerName == "" {
+// setConnectionStatus advertises conn, or nothing if conn is nil. It is the only writer of the
+// connection fields and always writes all of them, so nothing advertised can outlive what the
+// controller last saw of the pod. The FSM writes status as a JSON merge patch of omitempty fields,
+// which cannot clear a field, so this patches them directly, with null for empty.
+func (r *reconciler) setConnectionStatus(ctx context.Context, obj *v1alpha1.Buildkit, conn *connection) error {
+	var want connection
+	if conn != nil {
+		want = *conn
+	}
+	if obj.Status.Endpoint == want.endpoint && obj.Status.ServerCA == want.serverCA && obj.Status.ServerName == want.serverName {
 		return nil
 	}
 
-	p := []byte(`{"status":{"endpoint":null,"serverCA":null,"serverName":null}}`)
+	orNull := func(v string) any {
+		if v == "" {
+			return nil
+		}
+		return v
+	}
+	p, err := json.Marshal(map[string]any{"status": map[string]any{
+		"endpoint":   orNull(want.endpoint),
+		"serverCA":   orNull(want.serverCA),
+		"serverName": orNull(want.serverName),
+	}})
+	if err != nil {
+		return err
+	}
 	if err := r.c.Status().Patch(ctx, obj, client.RawPatch(k8stypes.MergePatchType, p)); err != nil {
-		return fmt.Errorf("clearing connection status: %w", err)
+		return fmt.Errorf("updating connection status: %w", err)
 	}
 
-	obj.Status.Endpoint = ""
-	obj.Status.ServerCA = ""
-	obj.Status.ServerName = ""
+	obj.Status.Endpoint, obj.Status.ServerCA, obj.Status.ServerName = want.endpoint, want.serverCA, want.serverName
 	return nil
 }
 
@@ -272,11 +288,8 @@ func (r *reconciler) clearConnectionStatus(ctx context.Context, obj *v1alpha1.Bu
 // checked. It returns a result when the reconcile must stop here.
 func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, managedPods []corev1.Pod, out *types.OutputSet, log *zap.SugaredLogger) (*types.Result, error) {
 	// Checked before anything is deleted: an operator that can't start TLS pods must leave running
-	// ones alone, but not advertise any for a template that now requires TLS.
+	// ones alone.
 	if r.healthProxyImage == "" {
-		if err := r.clearConnectionStatus(ctx, obj); err != nil {
-			return nil, err
-		}
 		return &types.Result{
 			Done: true,
 			CustomStatusCondition: &types.ResultStatusCondition{
@@ -290,9 +303,6 @@ func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, man
 	// A pod started before the template required TLS listens in plaintext and can't be upgraded in
 	// place, so remove it. A TLS pod replaces it if the Buildkit has a client CA.
 	if plaintext := podsWithoutTLS(managedPods); len(plaintext) > 0 {
-		if err := r.clearConnectionStatus(ctx, obj); err != nil {
-			return nil, err
-		}
 		if deleting := notYetDeleting(plaintext); len(deleting) > 0 {
 			log.Infow("Removing plaintext Buildkit pods because their template requires client TLS", "count", len(deleting))
 			if err := r.forceDeletePods(ctx, deleting, out); err != nil {
@@ -305,9 +315,6 @@ func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, man
 	}
 
 	if obj.Spec.ClientCA == "" {
-		if err := r.clearConnectionStatus(ctx, obj); err != nil {
-			return nil, err
-		}
 		return &types.Result{
 			Done: true,
 			CustomStatusCondition: &types.ResultStatusCondition{
@@ -321,9 +328,6 @@ func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, man
 	// The webhook enforces this too; checking here keeps the controller safe without it, and catches a
 	// client CA that has expired since (no client could connect with it).
 	if problem := clientCAProblem(obj.Spec.ClientCA, r.now()); problem != "" {
-		if err := r.clearConnectionStatus(ctx, obj); err != nil {
-			return nil, err
-		}
 		result := clientCAInvalid(problem)
 		return &result, nil
 	}

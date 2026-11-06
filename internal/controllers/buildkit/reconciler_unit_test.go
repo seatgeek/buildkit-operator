@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/reddit/achilles-sdk-api/api"
 	"github.com/reddit/achilles-sdk/pkg/fsm/types"
 	"github.com/reddit/achilles-sdk/pkg/io"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -69,25 +71,28 @@ func TestRecheckAtClientCAExpiry(t *testing.T) {
 	assert.NotEmpty(t, clientCAProblem(obj.Spec.ClientCA, now.Add(result.RequeueAfter)), "the requeued reconcile must see the CA as expired")
 }
 
-func TestPrepareTLS_withoutHelperImage(t *testing.T) {
+func TestRunBuildkit_withoutHelperImage(t *testing.T) {
 	t.Parallel()
 
 	scheme := runtime.NewScheme()
 	require.NoError(t, v1alpha1.AddToScheme(scheme))
 	require.NoError(t, corev1.AddToScheme(scheme))
+	template := &v1alpha1.BuildkitTemplate{Name: "t", Namespace: "ns", Spec: v1alpha1.BuildkitTemplateSpec{RequireClientTLS: true}}
 	plaintext := &corev1.Pod{Name: "plaintext", Namespace: "ns", Spec: corev1.PodSpec{Containers: []corev1.Container{{Args: []string{"--addr", "tcp://0.0.0.0:1234"}}}}}
 	obj := &v1alpha1.Buildkit{
 		Name:      "bk",
 		Namespace: "ns",
 		Spec:      v1alpha1.BuildkitSpec{Template: "t", ClientCA: test.CACertPEM()},
-		Status:    v1alpha1.BuildkitStatus{Endpoint: "tcp://10.0.0.1:1234"},
+		Status: v1alpha1.BuildkitStatus{
+			Endpoint:     "tcp://10.0.0.1:1234",
+			ResourceRefs: []api.TypedObjectRef{{Version: "v1", Kind: "Pod", Name: plaintext.Name, Namespace: plaintext.Namespace}},
+		},
 	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(obj, plaintext).WithStatusSubresource(obj).Build()
-	r := &reconciler{c: &io.ClientApplicator{Client: cl}, now: time.Now}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(template, obj, plaintext).WithStatusSubresource(obj).Build()
+	r := &reconciler{c: &io.ClientApplicator{Client: cl}, log: zap.NewNop().Sugar(), now: time.Now}
 
-	result, err := r.prepareTLS(t.Context(), obj, []corev1.Pod{*plaintext}, types.NewOutputSet(scheme), nil)
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	_, result := r.runBuildkit().Transition(t.Context(), obj, types.NewOutputSet(scheme))
+	require.NoError(t, result.Err)
 	require.NotNil(t, result.CustomStatusCondition)
 	assert.Equal(t, ReasonTLSNotConfigured, result.CustomStatusCondition.Reason)
 
@@ -95,6 +100,36 @@ func TestPrepareTLS_withoutHelperImage(t *testing.T) {
 	var updated v1alpha1.Buildkit
 	require.NoError(t, cl.Get(t.Context(), client.ObjectKeyFromObject(obj), &updated))
 	assert.Empty(t, updated.Status.Endpoint, "nothing is advertised for a template that now requires TLS")
+}
+
+func TestSetConnectionStatus(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, v1alpha1.AddToScheme(scheme))
+	obj := &v1alpha1.Buildkit{
+		Name:      "bk",
+		Namespace: "ns",
+		Status:    v1alpha1.BuildkitStatus{Endpoint: "tcp://10.0.0.1:1234", ServerCA: "old-cert", ServerName: "bk"},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(obj).WithStatusSubresource(obj).Build()
+	r := &reconciler{c: &io.ClientApplicator{Client: cl}}
+	stored := func() v1alpha1.BuildkitStatus {
+		var updated v1alpha1.Buildkit
+		require.NoError(t, cl.Get(t.Context(), client.ObjectKeyFromObject(obj), &updated))
+		return updated.Status
+	}
+
+	// A plaintext pod replacing a TLS one: its endpoint, and no pinned certificate.
+	require.NoError(t, r.setConnectionStatus(t.Context(), obj, &connection{endpoint: "tcp://10.0.0.2:1234"}))
+	got := stored()
+	assert.Equal(t, "tcp://10.0.0.2:1234", got.Endpoint)
+	assert.Empty(t, got.ServerCA)
+	assert.Empty(t, got.ServerName)
+
+	require.NoError(t, r.setConnectionStatus(t.Context(), obj, nil))
+	assert.Empty(t, stored().Endpoint)
+	assert.Empty(t, obj.Status.Endpoint, "the in-memory object follows, so the FSM's own write doesn't restore it")
 }
 
 func TestPodServerCert(t *testing.T) {
