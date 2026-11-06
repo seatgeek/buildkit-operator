@@ -534,4 +534,51 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 			g.Expect(updated.Status.ServerCA).To(Equal(cert))
 		}).Should(Succeed())
 	})
+
+	It("stops advertising a TLS pod that has failed, e.g. at its deadline", func() {
+		Expect(c.Create(ctx, &corev1.Namespace{Name: tlsFailedNamespace})).To(Succeed())
+		cleanupNamespace(tlsFailedNamespace)
+
+		template := &v1alpha1.BuildkitTemplate{
+			Name:      "failed-template",
+			Namespace: tlsFailedNamespace,
+			Spec:      v1alpha1.BuildkitTemplateSpec{Port: 1234, HealthPort: 1235, RequireClientTLS: true},
+		}
+		Expect(c.Create(ctx, template)).To(Succeed())
+		bk := &v1alpha1.Buildkit{
+			Name:      "deadlined",
+			Namespace: tlsFailedNamespace,
+			Spec:      v1alpha1.BuildkitSpec{Template: template.Name, ClientCA: testClientCA()},
+		}
+		Expect(c.Create(ctx, bk)).To(Succeed())
+
+		var pods corev1.PodList
+		Eventually(func(g Gomega) {
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsFailedNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+		}).Should(Succeed())
+		podKey := client.ObjectKeyFromObject(&pods.Items[0])
+		markPodReady(podKey)
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).NotTo(BeEmpty())
+		}).Should(Succeed())
+
+		Eventually(func(g Gomega) {
+			var pod corev1.Pod
+			g.Expect(c.Get(ctx, podKey, &pod)).To(Succeed())
+			pod.Status.Phase = corev1.PodFailed
+			pod.Status.Reason = "DeadlineExceeded"
+			g.Expect(c.Status().Update(ctx, &pod)).To(Succeed())
+		}).Should(Succeed())
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.GetCondition(v1alpha1.TypeDeployed).Reason).To(Equal(api.ConditionReason("PodFailed")))
+			g.Expect(updated.Status.Endpoint).To(BeEmpty())
+			g.Expect(updated.Status.ServerCA).To(BeEmpty())
+			g.Expect(updated.Status.ServerName).To(BeEmpty())
+		}).Should(Succeed())
+	})
 })

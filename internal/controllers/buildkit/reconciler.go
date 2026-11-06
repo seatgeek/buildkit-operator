@@ -87,6 +87,13 @@ func (r *reconciler) runBuildkit() *state {
 				}
 			}
 
+			// The pod may have vanished before this controller saw it terminating; stop advertising it.
+			if len(managedPods) == 0 {
+				if err := r.clearConnectionStatus(ctx, obj); err != nil {
+					return nil, types.ErrorResult(err)
+				}
+			}
+
 			// Ensure we have exactly one Buildkit pod running, creating or deleting as necessary
 			pod, err := r.ensureExactlyOnePod(ctx, obj, managedPods, requireTLS, out, log)
 			if err != nil {
@@ -112,32 +119,37 @@ func (r *reconciler) runBuildkit() *state {
 				return nil, types.RequeueResultWithReasonAndBackoff("Buildkit pod terminating", "PodTerminating")
 			}
 
-			// At this point, we have exactly one pod, so we can proceed to check its status.
-			// We'll empty the endpoint field and only set it once we confirm the pod is running and healthy.
-			obj.Status.Endpoint = ""
+			// At this point, we have exactly one pod, so we can proceed to check its status. Until it is
+			// running and healthy, nothing is advertised.
+			notReady := func(result types.Result) (*state, types.Result) {
+				if err := r.clearConnectionStatus(ctx, obj); err != nil {
+					return nil, types.ErrorResult(err)
+				}
+				return nil, result
+			}
 
 			// Are all containers running and healthy?
 			if pod.Status.Phase == corev1.PodFailed {
 				log.Warnw("Buildkit pod has failed", "pod", pod.Name, "reason", pod.Status.Reason, "message", pod.Status.Message)
-				return nil, types.Result{
+				return notReady(types.Result{
 					Done: true,
 					CustomStatusCondition: &types.ResultStatusCondition{
 						Reason:  "PodFailed",
 						Status:  corev1.ConditionFalse,
 						Message: fmt.Sprintf("Buildkit pod %s has failed: %s", pod.Name, cmp.Or(pod.Status.Message, pod.Status.Reason, "unknown failure")),
 					},
-				}
+				})
 			}
 
 			if pod.Status.Phase != corev1.PodRunning {
 				log.Debugw("Buildkit pod is not yet running", "pod", pod.Name, "phase", pod.Status.Phase)
-				return nil, types.RequeueResultWithReasonAndBackoff("Buildkit pod not running", "PodNotRunning")
+				return notReady(types.RequeueResultWithReasonAndBackoff("Buildkit pod not running", "PodNotRunning"))
 			}
 
 			for _, containerStatus := range pod.Status.ContainerStatuses {
 				if !containerStatus.Ready {
 					log.Debugw("Buildkit pod container not ready", "pod", pod.Name, "container", containerStatus.Name)
-					return nil, types.RequeueResultWithReasonAndBackoff("Buildkit pod container not ready", "ContainerNotReady")
+					return notReady(types.RequeueResultWithReasonAndBackoff("Buildkit pod container not ready", "ContainerNotReady"))
 				}
 			}
 
@@ -151,10 +163,7 @@ func (r *reconciler) runBuildkit() *state {
 				cert, err := podServerCert(pod, obj.Name)
 				if err != nil {
 					log.Errorw("Buildkit pod reported no usable server certificate", "pod", pod.Name, "error", err)
-					if clearErr := r.clearConnectionStatus(ctx, obj); clearErr != nil {
-						return nil, types.ErrorResult(clearErr)
-					}
-					return nil, types.ErrorResult(fmt.Errorf("buildkit pod %s: %w", pod.Name, err))
+					return notReady(types.ErrorResult(fmt.Errorf("buildkit pod %s: %w", pod.Name, err)))
 				}
 				obj.Status.ServerCA = cert
 				obj.Status.ServerName = obj.Name
@@ -264,14 +273,6 @@ func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, man
 				Message: fmt.Sprintf("BuildkitTemplate %s requires client TLS but the operator has no --health-proxy-image", obj.Spec.Template),
 			},
 		}, nil
-	}
-
-	// The pod may have vanished before this controller saw it terminating; don't leave its endpoint
-	// advertised.
-	if len(managedPods) == 0 {
-		if err := r.clearConnectionStatus(ctx, obj); err != nil {
-			return nil, err
-		}
 	}
 
 	// A pod started before the template required TLS listens in plaintext and can't be upgraded in

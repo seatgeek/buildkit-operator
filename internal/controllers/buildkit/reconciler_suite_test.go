@@ -34,12 +34,13 @@ import (
 // Namespaces the TLS tests run in. Envtest never finishes deleting namespaces, so each is used by a
 // single test.
 const (
-	tlsNamespace      = "tls-test"
-	tlsFlipNamespace  = "tls-flip-test"
-	tlsCertNamespace  = "tls-cert-test"
-	tlsOffNamespace   = "tls-off-test"
-	tlsBadCANamespace = "tls-bad-ca-test"
-	tlsDrainNamespace = "tls-drain-test"
+	tlsNamespace       = "tls-test"
+	tlsFlipNamespace   = "tls-flip-test"
+	tlsCertNamespace   = "tls-cert-test"
+	tlsOffNamespace    = "tls-off-test"
+	tlsBadCANamespace  = "tls-bad-ca-test"
+	tlsDrainNamespace  = "tls-drain-test"
+	tlsFailedNamespace = "tls-failed-test"
 )
 
 var (
