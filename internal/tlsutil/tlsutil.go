@@ -52,12 +52,12 @@ func ParseCACertPEM(data string) (*x509.Certificate, error) {
 	if !cert.IsCA || !cert.BasicConstraintsValid {
 		return nil, errors.New("certificate is not a CA (basicConstraints CA:TRUE required)")
 	}
-	// No key usage means no restriction; any other set must allow signing certificates, or Go rejects
-	// client certificates it issued.
+	// No key usage means no restriction; any other set must allow signing certificates (RFC 5280
+	// 4.2.1.3). Go's verifier ignores key usage, but clients' TLS stacks may not.
 	if cert.KeyUsage != 0 && cert.KeyUsage&x509.KeyUsageCertSign == 0 {
 		return nil, errors.New("CA certificate's key usage does not include certificate signing (keyCertSign)")
 	}
-	// Likewise an extended key usage, if present, must allow client authentication: Go checks it
+	// An extended key usage, if present, must allow client authentication: Go checks it
 	// along the whole chain.
 	if (len(cert.ExtKeyUsage) > 0 || len(cert.UnknownExtKeyUsage) > 0) &&
 		!slices.Contains(cert.ExtKeyUsage, x509.ExtKeyUsageClientAuth) && !slices.Contains(cert.ExtKeyUsage, x509.ExtKeyUsageAny) {

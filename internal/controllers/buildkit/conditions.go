@@ -20,7 +20,8 @@ var conditionDeployed = api.Condition{
 const (
 	// ReasonClientCARequired means the template requires client TLS but the Buildkit has no spec.clientCA.
 	ReasonClientCARequired api.ConditionReason = "ClientCARequired"
-	// ReasonClientCAInvalid means spec.clientCA is not exactly one PEM CA certificate.
+	// ReasonClientCAInvalid means spec.clientCA can't authenticate clients now: it is not exactly one
+	// usable PEM CA certificate, or it has expired or is not yet valid.
 	ReasonClientCAInvalid api.ConditionReason = "ClientCAInvalid"
 	// ReasonTLSNotConfigured means the template requires client TLS but the operator was started without
 	// the image for TLS pods' helper containers.
