@@ -62,6 +62,11 @@ func (r *reconciler) runBuildkit() *state {
 		Transition: func(ctx context.Context, obj *v1alpha1.Buildkit, out *types.OutputSet) (*state, types.Result) {
 			log := r.log.With("name", obj.Name, "namespace", obj.Namespace)
 
+			// The FSM writes back the whole in-memory status, which comes from a cache that may predate
+			// the last setConnectionStatus. Blanked here (omitempty, so the FSM's write leaves them
+			// alone), the connection fields are only ever written by setConnectionStatus.
+			obj.Status.Endpoint, obj.Status.ServerCA, obj.Status.ServerName = "", "", ""
+
 			// Until the pods have been read, nothing is known that could change what is advertised.
 			template, err := r.getTemplate(ctx, obj)
 			if err != nil {

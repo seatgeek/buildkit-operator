@@ -5,6 +5,8 @@
 package buildkit
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	"github.com/seatgeek/buildkit-operator/api/v1alpha1"
 	"github.com/seatgeek/buildkit-operator/internal/test"
@@ -184,4 +187,36 @@ func TestPodServerCert(t *testing.T) {
 		_, err := podServerCert(p, serverName)
 		assert.Error(t, err, name)
 	}
+}
+
+func TestRunBuildkit_errorLeavesConnectionToSetConnectionStatus(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, v1alpha1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
+	// A cached copy that still shows a connection the controller has since withdrawn.
+	obj := &v1alpha1.Buildkit{
+		Name:      "bk",
+		Namespace: "ns",
+		Spec:      v1alpha1.BuildkitSpec{Template: "t"},
+		Status:    v1alpha1.BuildkitStatus{Endpoint: "tcp://10.0.0.1:1234", ServerCA: "old-cert", ServerName: "bk"},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, o client.Object, opts ...client.GetOption) error {
+			if _, ok := o.(*v1alpha1.BuildkitTemplate); ok {
+				return errors.New("API unavailable")
+			}
+			return c.Get(ctx, key, o, opts...)
+		},
+	}).Build()
+	r := &reconciler{c: &io.ClientApplicator{Client: cl}, log: zap.NewNop().Sugar(), now: time.Now}
+
+	_, result := r.runBuildkit().Transition(t.Context(), obj, types.NewOutputSet(scheme))
+	require.Error(t, result.Err)
+	// The FSM writes the in-memory status back after the transition; it must not carry the stale
+	// connection with it.
+	assert.Empty(t, obj.Status.Endpoint)
+	assert.Empty(t, obj.Status.ServerCA)
+	assert.Empty(t, obj.Status.ServerName)
 }
