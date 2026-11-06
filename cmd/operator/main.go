@@ -19,6 +19,7 @@ import (
 	"github.com/reddit/achilles-sdk/pkg/meta"
 	"github.com/reddit/achilles-sdk/pkg/ratelimiter"
 	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	crtMetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
@@ -104,7 +105,7 @@ func healthProxyCommand(ctx context.Context) *cobra.Command {
 // init container and reports the certificate in its termination message, which kubelet copies into
 // the pod's status for the operator to publish.
 func genCertCommand() *cobra.Command {
-	var dir, serverName, messagePath string
+	var dir, serverName string
 	var validFor time.Duration
 
 	cmd := &cobra.Command{
@@ -115,14 +116,13 @@ func genCertCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return os.WriteFile(messagePath, certPEM, 0o644) //nolint:gosec // kubelet's termination-message file; the certificate is public
+			return os.WriteFile(corev1.TerminationMessagePathDefault, certPEM, 0o644) //nolint:gosec // kubelet's termination-message file; the certificate is public
 		},
 	}
 
 	cmd.Flags().StringVar(&dir, "dir", "", "Directory to write tls.crt, tls.key and ca.crt to")
 	cmd.Flags().StringVar(&serverName, "server-name", "", "Name the certificate is valid for")
 	cmd.Flags().DurationVar(&validFor, "valid-for", 0, "How long the certificate is valid")
-	cmd.Flags().StringVar(&messagePath, "termination-message-path", "/dev/termination-log", "File to report the certificate in")
 	for _, f := range []string{"dir", "server-name", "valid-for"} {
 		_ = cmd.MarkFlagRequired(f)
 	}
