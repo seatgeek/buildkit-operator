@@ -88,6 +88,17 @@ func cleanupNamespace(namespace string) {
 	})
 }
 
+// setRequireTLS sets requireClientTLS on a template.
+func setRequireTLS(template *v1alpha1.BuildkitTemplate, require bool) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		var updated v1alpha1.BuildkitTemplate
+		g.Expect(c.Get(ctx, client.ObjectKeyFromObject(template), &updated)).To(Succeed())
+		updated.Spec.RequireClientTLS = require
+		g.Expect(c.Update(ctx, &updated)).To(Succeed())
+	}).Should(Succeed())
+}
+
 // nudgePod changes a pod annotation so the controller reconciles its Buildkit; re-applying an
 // unchanged status would not produce an event.
 func nudgePod(key client.ObjectKey) {
@@ -588,5 +599,46 @@ var _ = Describe("Buildkit Reconciler with client TLS", func() {
 			g.Expect(updated.Status.ServerCA).To(BeEmpty())
 			g.Expect(updated.Status.ServerName).To(BeEmpty())
 		}).Should(Succeed())
+	})
+	It("withdraws a TLS pod left running after TLS is turned off once its client CA expires", func() {
+		Expect(c.Create(ctx, &corev1.Namespace{Name: tlsExpiryNamespace})).To(Succeed())
+		cleanupNamespace(tlsExpiryNamespace)
+
+		template := &v1alpha1.BuildkitTemplate{
+			Name:      "expiry-template",
+			Namespace: tlsExpiryNamespace,
+			Spec:      v1alpha1.BuildkitTemplateSpec{Port: 1234, HealthPort: 1235, RequireClientTLS: true},
+		}
+		Expect(c.Create(ctx, template)).To(Succeed())
+		bk := &v1alpha1.Buildkit{
+			Name:      "short-lived-ca",
+			Namespace: tlsExpiryNamespace,
+			Spec: v1alpha1.BuildkitSpec{
+				Template: template.Name,
+				ClientCA: test.CACertPEMValid(time.Now().Add(-time.Minute), time.Now().Add(8*time.Second)),
+			},
+		}
+		Expect(c.Create(ctx, bk)).To(Succeed())
+
+		var pods corev1.PodList
+		Eventually(func(g Gomega) {
+			g.Expect(c.List(ctx, &pods, client.InNamespace(tlsExpiryNamespace))).To(Succeed())
+			g.Expect(pods.Items).To(HaveLen(1))
+		}).Should(Succeed())
+		markPodReady(client.ObjectKeyFromObject(&pods.Items[0]))
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).NotTo(BeEmpty())
+		}).Should(Succeed())
+
+		setRequireTLS(template, false)
+		Eventually(func(g Gomega) {
+			var updated v1alpha1.Buildkit
+			g.Expect(c.Get(ctx, client.ObjectKeyFromObject(bk), &updated)).To(Succeed())
+			g.Expect(updated.Status.Endpoint).To(BeEmpty())
+			g.Expect(updated.Status.ServerCA).To(BeEmpty())
+			g.Expect(updated.GetCondition(v1alpha1.TypeDeployed).Reason).To(Equal(buildkit.ReasonClientCAInvalid))
+		}, "20s").Should(Succeed())
 	})
 })

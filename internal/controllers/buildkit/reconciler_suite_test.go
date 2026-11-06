@@ -41,6 +41,7 @@ const (
 	tlsBadCANamespace  = "tls-bad-ca-test"
 	tlsDrainNamespace  = "tls-drain-test"
 	tlsFailedNamespace = "tls-failed-test"
+	tlsExpiryNamespace = "tls-expiry-test"
 )
 
 var (

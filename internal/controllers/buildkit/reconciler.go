@@ -164,6 +164,11 @@ func (r *reconciler) runBuildkit() *state {
 			}
 
 			if podTLS {
+				// prepareTLS only checks the client CA while the template requires TLS; a TLS pod left
+				// running after that was turned off must not be advertised once no client can connect.
+				if problem := clientCAProblem(obj.Spec.ClientCA, r.now()); problem != "" {
+					return notReady(clientCAInvalid(problem))
+				}
 				cert, err := podServerCert(pod, obj.Name)
 				if err != nil {
 					log.Errorw("Buildkit pod reported no usable server certificate", "pod", pod.Name, "error", err)
@@ -316,14 +321,8 @@ func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, man
 		if err := r.clearConnectionStatus(ctx, obj); err != nil {
 			return nil, err
 		}
-		return &types.Result{
-			Done: true,
-			CustomStatusCondition: &types.ResultStatusCondition{
-				Reason:  ReasonClientCAInvalid,
-				Status:  corev1.ConditionFalse,
-				Message: "spec.clientCA " + problem,
-			},
-		}, nil
+		result := clientCAInvalid(problem)
+		return &result, nil
 	}
 
 	return nil, nil //nolint:nilnil // no result: the reconcile continues
@@ -372,6 +371,18 @@ func clientCAProblem(clientCA string, now time.Time) string {
 		return "is not valid until " + ca.NotBefore.UTC().Format(time.RFC3339)
 	}
 	return ""
+}
+
+// clientCAInvalid is the result for a Buildkit whose client CA can't authenticate clients.
+func clientCAInvalid(problem string) types.Result {
+	return types.Result{
+		Done: true,
+		CustomStatusCondition: &types.ResultStatusCondition{
+			Reason:  ReasonClientCAInvalid,
+			Status:  corev1.ConditionFalse,
+			Message: "spec.clientCA " + problem,
+		},
+	}
 }
 
 // recheckAtClientCAExpiry keeps the instance ready but reconciles again just after the client CA
