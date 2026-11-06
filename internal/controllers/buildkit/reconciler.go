@@ -272,8 +272,11 @@ func (r *reconciler) clearConnectionStatus(ctx context.Context, obj *v1alpha1.Bu
 // checked. It returns a result when the reconcile must stop here.
 func (r *reconciler) prepareTLS(ctx context.Context, obj *v1alpha1.Buildkit, managedPods []corev1.Pod, out *types.OutputSet, log *zap.SugaredLogger) (*types.Result, error) {
 	// Checked before anything is deleted: an operator that can't start TLS pods must leave running
-	// ones alone.
+	// ones alone, but not advertise any for a template that now requires TLS.
 	if r.healthProxyImage == "" {
+		if err := r.clearConnectionStatus(ctx, obj); err != nil {
+			return nil, err
+		}
 		return &types.Result{
 			Done: true,
 			CustomStatusCondition: &types.ResultStatusCondition{
