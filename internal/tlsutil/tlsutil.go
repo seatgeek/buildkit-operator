@@ -55,6 +55,11 @@ func ParseCACertPEM(data string) (*x509.Certificate, error) {
 		!slices.Contains(cert.ExtKeyUsage, x509.ExtKeyUsageClientAuth) && !slices.Contains(cert.ExtKeyUsage, x509.ExtKeyUsageAny) {
 		return nil, errors.New("CA certificate's extended key usage does not allow client authentication (clientAuth)")
 	}
+	// Go refuses to verify any chain through a certificate with a critical extension it doesn't
+	// understand, so no client could authenticate.
+	if len(cert.UnhandledCriticalExtensions) > 0 {
+		return nil, errors.New("CA certificate has critical extensions Go cannot process")
+	}
 
 	return cert, nil
 }

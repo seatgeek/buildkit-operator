@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"encoding/pem"
 	"math/big"
@@ -73,6 +74,7 @@ func TestParseCACertPEM(t *testing.T) {
 		{name: "CA limited to server auth", data: caCertPEMWithEKU(t, x509.ExtKeyUsageServerAuth), wantErr: "clientAuth"},
 		{name: "CA allowing client auth", data: caCertPEMWithEKU(t, x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth)},
 		{name: "CA allowing any usage", data: caCertPEMWithEKU(t, x509.ExtKeyUsageAny)},
+		{name: "CA with unknown critical extension", data: caCertPEMWithCriticalExtension(t), wantErr: "critical extensions"},
 		{name: "server certificate", data: string(serverPEM), wantErr: "not a CA"},
 	}
 
@@ -146,7 +148,7 @@ func caCertPEMWithEKU(t *testing.T, eku ...x509.ExtKeyUsage) string {
 	return caCertPEMFull(t, x509.KeyUsageCertSign, eku)
 }
 
-func caCertPEMFull(t *testing.T, usage x509.KeyUsage, eku []x509.ExtKeyUsage) string {
+func caCertPEMFull(t *testing.T, usage x509.KeyUsage, eku []x509.ExtKeyUsage, extra ...pkix.Extension) string {
 	t.Helper()
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -160,10 +162,18 @@ func caCertPEMFull(t *testing.T, usage x509.KeyUsage, eku []x509.ExtKeyUsage) st
 		ExtKeyUsage:           eku,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
+		ExtraExtensions:       extra,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
 	require.NoError(t, err)
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+}
+
+// caCertPEMWithCriticalExtension returns a CA marking an extension Go doesn't implement as critical.
+func caCertPEMWithCriticalExtension(t *testing.T) string {
+	t.Helper()
+	ext := pkix.Extension{Id: asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 99999, 1}, Critical: true, Value: []byte{0x05, 0x00}}
+	return caCertPEMFull(t, x509.KeyUsageCertSign, nil, ext)
 }
 
 func TestNotAfter(t *testing.T) {
