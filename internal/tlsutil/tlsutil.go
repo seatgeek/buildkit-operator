@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -95,6 +96,10 @@ func GenerateServerCert(serverName string, validity time.Duration, now time.Time
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
+	}
+	// Go treats an IP-shaped server name as an IP address and verifies it only against IP SANs.
+	if ip := net.ParseIP(serverName); ip != nil {
+		tmpl.DNSNames, tmpl.IPAddresses = nil, []net.IP{ip}
 	}
 
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)

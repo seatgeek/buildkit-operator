@@ -146,6 +146,16 @@ func caCertPEMWithCriticalExtension(t *testing.T) string {
 	return caCertPEMFull(t, x509.KeyUsageCertSign, nil, ext)
 }
 
+func TestGenerateServerCert_ipShapedName(t *testing.T) {
+	t.Parallel()
+
+	// A legal Buildkit name that Go verifies as an IP address.
+	certPEM, _, err := GenerateServerCert("10.0.0.1", time.Hour, time.Now())
+	require.NoError(t, err)
+	_, err = ParseServerCertPEM(certPEM, "10.0.0.1")
+	require.NoError(t, err)
+}
+
 func TestParseServerCertPEM(t *testing.T) {
 	t.Parallel()
 
